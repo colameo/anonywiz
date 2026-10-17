@@ -1,10 +1,10 @@
-# anony
+# anonywiz
 
-Schwärzt sensible Daten in Schweizer Steuererklärungen (z. B. EasyTax/eTax Aargau), Lohnausweisen und PK-Ausweisen, **lokal und offline**. Die Datei verlässt deinen Computer nicht.
+Schwärzt sensible Daten in ein PDF-Dokument, Steuererklärungen, Lohnausweisen, PK-Ausweisen usw. **lokal und offline**. Die Datei verlässt deinen Computer nicht.
 
 Die Schwärzung ist echt: Text und Bildpunkte werden aus dem PDF entfernt und nicht nur mit schwarzen Kästen überdeckt. Danach prüft das Skript die Ausgabe automatisch noch einmal und erzeugt Vorschaubilder jeder Seite.
 
-Aktuelle Version: `2026-10-17.9` (anzeigen mit `python3 anony.py --version`)
+Aktuelle Version: `2026-10-17.9` (anzeigen mit `python3 anonywiz.py --version`)
 
 ---
 
@@ -28,18 +28,18 @@ Zahlen wie Lohn, Vermögen oder Abzüge bleiben stehen.
 
 ```bash
 # Python-Umgebung (nötig, weil Homebrew-Python «pip install» blockiert)
-python3 -m venv ~/anony-venv
-~/anony-venv/bin/pip install pymupdf zxing-cpp numpy
+python3 -m venv ~/anonywiz-venv
+~/anonywiz-venv/bin/pip install pymupdf zxing-cpp numpy
 
 # Texterkennung für eingescannte Seiten
 brew install tesseract tesseract-lang
 tesseract --list-langs      # «deu» muss in der Liste stehen
 ```
 
-Danach das Skript immer mit `~/anony-venv/bin/python anony.py …` starten. Kürzer geht es mit einem Alias:
+Danach das Skript immer mit `~/anonywiz-venv/bin/python anonywiz.py …` starten. Kürzer geht es mit einem Alias:
 
 ```bash
-alias anony='~/anony-venv/bin/python ~/pfad/zu/anony.py'
+alias anonywiz='~/anonywiz-venv/bin/python ~/pfad/zu/anonywiz.py'
 ```
 
 Was die Pakete machen:
@@ -76,16 +76,16 @@ Kantonalbank
 
 Nimm auch Nummern auf, die das Skript nicht automatisch erkennt: Registernummer, Versichertennummer, Adressnummer, Vertragsnummer und eine IBAN, bei der jede Ziffer in einem eigenen Kästchen steht.
 
-### 2. Anonymisieren
+### 2. anonywizmisieren
 
 ```bash
-anony steuererklaerung.pdf -t terms.txt
+anonywiz steuererklaerung.pdf -t terms.txt
 ```
 
 Ergebnis im gleichen Ordner:
 
-- `steuererklaerung_anonym.pdf`: die geschwärzte Datei
-- `steuererklaerung_anonym_preview/`: ein PNG pro Seite zur Kontrolle
+- `secretdoc_anonywizm.pdf`: die geschwärzte Datei
+- `secretdoc_anonywizm_preview/`: ein PNG pro Seite zur Kontrolle
 
 ### 3. Bericht lesen
 
@@ -108,29 +108,29 @@ Meldet sie Funde, steht bei jedem ein fertiger `--region`-Parameter zum Nachschw
 
 ```bash
 # Nur prüfen, nichts verändern (Original oder bereits geschwärzte Datei)
-anony datei.pdf -t terms.txt --check
+anonywiz datei.pdf -t terms.txt --check
 
 # Prüfbericht als JSON, Werte unmaskiert
-anony datei.pdf -t terms.txt --check --json bericht.json --show-values
+anonywiz datei.pdf -t terms.txt --check --json bericht.json --show-values
 
 # Nur bestimmte Seiten behalten
-anony datei.pdf -t terms.txt --pages 1-4,9
+anonywiz datei.pdf -t terms.txt --pages 1-4,9
 
 # Bereich von Hand schwärzen (Prozent der Seite: x0,y0,x1,y1)
-anony datei.pdf -t terms.txt --region "1:60,5,95,12"      # Seite 1
-anony datei.pdf -t terms.txt --region "*:0,0,100,8"       # Kopfzeile auf allen Seiten
+anonywiz datei.pdf -t terms.txt --region "1:60,5,95,12"      # Seite 1
+anonywiz datei.pdf -t terms.txt --region "*:0,0,100,8"       # Kopfzeile auf allen Seiten
 
 # Positionen von Bildern, Barcodes und unlesbarem Text anzeigen
-anony datei.pdf --inspect
+anonywiz datei.pdf --inspect
 
 # Barcode-Erkennung sichtbar machen (Debug-PNGs, nichts wird geschwärzt)
-anony datei.pdf --debug-barcodes
+anonywiz datei.pdf --debug-barcodes
 
 # Barcodes mit grösserem Rand schwärzen
-anony datei.pdf -t terms.txt --barcode-pad 10
+anonywiz datei.pdf -t terms.txt --barcode-pad 10
 
 # Eingescannte Seiten komplett schwärzen statt per OCR prüfen
-anony datei.pdf -t terms.txt --remove-scans
+anonywiz datei.pdf -t terms.txt --remove-scans
 ```
 
 ### Alle Optionen
@@ -138,7 +138,7 @@ anony datei.pdf -t terms.txt --remove-scans
 | Option | Wirkung |
 |---|---|
 | `-t, --terms DATEI` | eigene Begriffe schwärzen |
-| `-o, --out DATEI` | Name der Ausgabedatei (Standard: `<name>_anonym.pdf`) |
+| `-o, --out DATEI` | Name der Ausgabedatei (Standard: `<name>_anonywizm.pdf`) |
 | `--pages 1,3-6` | nur diese Seiten behalten |
 | `--region S:x0,y0,x1,y1` | Bereich von Hand schwärzen, mehrfach möglich |
 | `--keep-dates` | Datumsangaben nicht schwärzen |
@@ -161,7 +161,7 @@ anony datei.pdf -t terms.txt --remove-scans
 
 | Problem | Ursache und Lösung |
 |---|---|
-| `unrecognized arguments` | Alte Version. Mit `--version` prüfen und die neue Datei über `anony.py` kopieren. |
+| `unrecognized arguments` | Alte Version. Mit `--version` prüfen und die neue Datei über `anonywiz.py` kopieren. |
 | Ganze Seite schwarz | Die Seite ist ein Scan, Tesseract fehlt. Tesseract installieren, sonst `--remove-scans` verwenden. |
 | Text in der Vorschau markierbar, Skript meldet «kein auslesbarer Text» | macOS Live Text erkennt Text in Bildern nur auf dem Bildschirm. Die Datei ist trotzdem ein Scan. |
 | Barcode teilweise sichtbar | `--barcode-pad 10` versuchen, sonst `--debug-barcodes` und `--region`. |
