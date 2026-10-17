@@ -11,3 +11,5 @@ __pycache__/
 .venv/
 *-venv/
 terms.txt
+/_docs/
+/.junie/
