@@ -1,6 +1,6 @@
 # anonywiz
 
-Redacts sensitive data in Swiss tax returns (e.g. EasyTax/eTax Aargau), salary statements and pension fund statements, **locally and offline**. Your file never leaves your computer.
+Redacts sensitive data, salary statements and pension fund statements, **locally and offline**. Your file never leaves your computer.
 
 The redaction is real: text and image pixels are removed from the PDF, not just covered with black boxes. Afterwards the script automatically re-checks the output and renders a preview image of every page.
 
