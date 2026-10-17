@@ -1,180 +1,202 @@
 # anonywiz
 
-Schwärzt sensible Daten in ein PDF-Dokument, Steuererklärungen, Lohnausweisen, PK-Ausweisen usw. **lokal und offline**. Die Datei verlässt deinen Computer nicht.
+Redacts sensitive data in Swiss tax returns (e.g. EasyTax/eTax Aargau), salary statements and pension fund statements, **locally and offline**. Your file never leaves your computer.
 
-Die Schwärzung ist echt: Text und Bildpunkte werden aus dem PDF entfernt und nicht nur mit schwarzen Kästen überdeckt. Danach prüft das Skript die Ausgabe automatisch noch einmal und erzeugt Vorschaubilder jeder Seite.
+The redaction is real: text and image pixels are removed from the PDF, not just covered with black boxes. Afterwards the script automatically re-checks the output and renders a preview image of every page.
 
-Aktuelle Version: `2026-10-17.9` (anzeigen mit `python3 anonywiz.py --version`)
+Current version: `2026-10-17.9` (show with `python3 anonywizard.py --version`)
+
+> The tool targets German-language documents. Its messages and reports are in German.
 
 ---
 
-## Was geschwärzt wird
+## What gets redacted
 
-| Kategorie | Beispiele |
+| Category | Examples |
 |---|---|
-| Muster | AHV-Nr. (756.xxxx.xxxx.xx), IBAN CH/LI, UID (CHE-…), ISIN, E-Mail, Telefon, Datumsangaben |
-| Adressen | Strasse + Hausnummer, PLZ + Ort |
-| Eigene Begriffe | alles aus `terms.txt` (Namen, Firma, Arbeitgeber, Bank …) |
-| Barcodes | als Bild, als Vektorgrafik (Strichcode, PDF417, QR) und in Barcode-Schriften, inkl. Klartextnummer darunter |
-| Scans | Texterkennung (OCR) direkt auf dem Bild, nur die Fundstellen werden übermalt |
-| Versteckt | weisser Text, Mikroschrift, Text unter schwarzen Balken (Pseudo-Schwärzung) |
-| Datei-Inhalt | Metadaten, XMP, eingebettete Dateien (EasyTax bettet teils XML mit allen Daten ein), Formularfelder |
+| Patterns | AHV/AVS social security no. (756.xxxx.xxxx.xx), IBAN CH/LI, company UID (CHE-…), ISIN, e-mail, phone, dates |
+| Addresses | street + house number, postcode + town |
+| Your own terms | everything in `terms.txt` (names, company, employer, bank …) |
+| Barcodes | as images, as vector graphics (1D, PDF417, QR) and in barcode fonts, including the human-readable number below |
+| Scans | text recognition (OCR) on the image itself, only the matches are painted over |
+| Hidden content | white text, micro text, text under black bars (fake redaction) |
+| File content | metadata, XMP, embedded files (EasyTax sometimes embeds an XML with all data), form fields |
 
-Zahlen wie Lohn, Vermögen oder Abzüge bleiben stehen.
+Figures such as salary, assets or deductions stay visible.
 
 ---
 
 ## Installation (macOS)
 
 ```bash
-# Python-Umgebung (nötig, weil Homebrew-Python «pip install» blockiert)
-python3 -m venv ~/anonywiz-venv
-~/anonywiz-venv/bin/pip install pymupdf zxing-cpp numpy
+# Python environment (needed because Homebrew Python blocks "pip install")
+python3 -m venv ~/anonywizard-venv
+~/anonywizard-venv/bin/pip install pymupdf zxing-cpp numpy
 
-# Texterkennung für eingescannte Seiten
+# Text recognition for scanned pages
 brew install tesseract tesseract-lang
-tesseract --list-langs      # «deu» muss in der Liste stehen
+tesseract --list-langs      # "deu" must be in the list
 ```
 
-Danach das Skript immer mit `~/anonywiz-venv/bin/python anonywiz.py …` starten. Kürzer geht es mit einem Alias:
+Then always start the script with `~/anonywizard-venv/bin/python anonywizard.py …`. An alias makes it shorter:
 
 ```bash
-alias anonywiz='~/anonywiz-venv/bin/python ~/pfad/zu/anonywiz.py'
+alias anonywizard='~/anonywizard-venv/bin/python ~/path/to/anonywizard.py'
 ```
 
-Was die Pakete machen:
+What the packages do:
 
-| Paket | Wozu | Pflicht? |
+| Package | Purpose | Required? |
 |---|---|---|
-| `pymupdf` | PDF lesen und schwärzen | ja |
-| `tesseract` | Texterkennung in Scans | für Scans |
-| `zxing-cpp`, `numpy` | Barcodes und QR-Codes in Scans finden | für Scans |
-| `spacy` + `de_core_news_md` | zusätzliche Namenserkennung per KI (lokal) | nein |
+| `pymupdf` | read and redact PDFs | yes |
+| `tesseract` | text recognition in scans | for scans |
+| `zxing-cpp`, `numpy` | find barcodes and QR codes in scans | for scans |
+| `spacy` + `de_core_news_md` | additional AI name recognition (local) | no |
 
 ---
 
-## Bedienung in 4 Schritten
+## Usage in 4 steps
 
-### 1. `terms.txt` anlegen
+### 1. Create `terms.txt`
 
-Ein Begriff pro Zeile, `#` leitet einen Kommentar ein. Führe Namensteile einzeln auf, weil die Reihenfolge im PDF variiert.
+```bash
+cp terms.example.txt terms.txt
+```
+
+`terms.txt` is listed in `.gitignore` and is never committed.
+
+One term per line, `#` starts a comment. List name parts separately, because their order varies in the PDF.
 
 ```text
-# Personen
+# People
 Muster
 Peter
 Anna
-# Adresse
+# Address
 Bahnhofstrasse
 Aarau
-# Firma, Bank, Versicherung
+# Company, bank, insurer
 Beispiel GmbH
 Kantonalbank
-# Nummern, die kein Standardformat haben
-457 221
+# Numbers without a standard format
+123 456
 ```
 
-Nimm auch Nummern auf, die das Skript nicht automatisch erkennt: Registernummer, Versichertennummer, Adressnummer, Vertragsnummer und eine IBAN, bei der jede Ziffer in einem eigenen Kästchen steht.
+Also add numbers the script cannot recognise automatically: register number, insurance number, address number, contract number, and an IBAN printed with each digit in its own box.
 
-### 2. anonywizmisieren
+### 2. Anonymise
 
 ```bash
-anonywiz steuererklaerung.pdf -t terms.txt
+anonywizard tax_return.pdf -t terms.txt
 ```
 
-Ergebnis im gleichen Ordner:
+Output in the same folder:
 
-- `secretdoc_anonywizm.pdf`: die geschwärzte Datei
-- `secretdoc_anonywizm_preview/`: ein PNG pro Seite zur Kontrolle
+- `tax_return_anonym.pdf`: the redacted file
+- `tax_return_anonym_preview/`: one PNG per page for review
 
-### 3. Bericht lesen
+### 3. Read the report
 
-Am Ende steht die Gegenprüfung:
+The re-check is printed at the end:
 
 ```
 Geschwärzt: AHV-Nr 1x, IBAN 1x, Begriff 9x, Vektor-Barcode 1x, …
 Gegenprüfung: OK – nichts Sensibles mehr gefunden
 ```
 
-Meldet sie Funde, steht bei jedem ein fertiger `--region`-Parameter zum Nachschwärzen.
+("Redacted: …" / "Re-check: OK – nothing sensitive found".) If it reports findings, each comes with a ready-made `--region` parameter to redact it.
 
-### 4. Vorschau ansehen
+### 4. Look at the preview
 
-**Immer.** Die Erkennung arbeitet heuristisch. Namen ohne Feldbezeichnung, die nicht in `terms.txt` stehen, sowie Handschrift und Stempel in Scans können durchrutschen.
+**Always.** Detection is heuristic. Names without a field label that are not in `terms.txt`, as well as handwriting and stamps in scans, can slip through.
 
 ---
 
-## Häufige Aufgaben
+## Common tasks
 
 ```bash
-# Nur prüfen, nichts verändern (Original oder bereits geschwärzte Datei)
-anonywiz datei.pdf -t terms.txt --check
+# Check only, change nothing (original or already redacted file)
+anonywizard file.pdf -t terms.txt --check
 
-# Prüfbericht als JSON, Werte unmaskiert
-anonywiz datei.pdf -t terms.txt --check --json bericht.json --show-values
+# Check report as JSON, values unmasked
+anonywizard file.pdf -t terms.txt --check --json report.json --show-values
 
-# Nur bestimmte Seiten behalten
-anonywiz datei.pdf -t terms.txt --pages 1-4,9
+# Keep only certain pages
+anonywizard file.pdf -t terms.txt --pages 1-4,9
 
-# Bereich von Hand schwärzen (Prozent der Seite: x0,y0,x1,y1)
-anonywiz datei.pdf -t terms.txt --region "1:60,5,95,12"      # Seite 1
-anonywiz datei.pdf -t terms.txt --region "*:0,0,100,8"       # Kopfzeile auf allen Seiten
+# Redact an area by hand (percent of page: x0,y0,x1,y1)
+anonywizard file.pdf -t terms.txt --region "1:60,5,95,12"      # page 1
+anonywizard file.pdf -t terms.txt --region "*:0,0,100,8"       # header on all pages
 
-# Positionen von Bildern, Barcodes und unlesbarem Text anzeigen
-anonywiz datei.pdf --inspect
+# Show positions of images, barcodes and unreadable text
+anonywizard file.pdf --inspect
 
-# Barcode-Erkennung sichtbar machen (Debug-PNGs, nichts wird geschwärzt)
-anonywiz datei.pdf --debug-barcodes
+# Visualise barcode detection (debug PNGs, nothing is redacted)
+anonywizard file.pdf --debug-barcodes
 
-# Barcodes mit grösserem Rand schwärzen
-anonywiz datei.pdf -t terms.txt --barcode-pad 10
+# Redact barcodes with a wider margin
+anonywizard file.pdf -t terms.txt --barcode-pad 10
 
-# Eingescannte Seiten komplett schwärzen statt per OCR prüfen
-anonywiz datei.pdf -t terms.txt --remove-scans
+# Black out scanned pages completely instead of running OCR
+anonywizard file.pdf -t terms.txt --remove-scans
 ```
 
-### Alle Optionen
+### All options
 
-| Option | Wirkung |
+| Option | Effect |
 |---|---|
-| `-t, --terms DATEI` | eigene Begriffe schwärzen |
-| `-o, --out DATEI` | Name der Ausgabedatei (Standard: `<name>_anonywizm.pdf`) |
-| `--pages 1,3-6` | nur diese Seiten behalten |
-| `--region S:x0,y0,x1,y1` | Bereich von Hand schwärzen, mehrfach möglich |
-| `--keep-dates` | Datumsangaben nicht schwärzen |
-| `--keep-images` | Bilder und Barcodes nicht entfernen |
-| `--remove-scans` | Scans komplett schwärzen statt OCR |
-| `--redact-unreadable` | auch Text ohne Unicode-Zuordnung schwärzen |
-| `--barcode-pad PT` | zusätzlicher Rand um Barcodes (Standard 4 pt) |
-| `--no-preview` | keine Vorschaubilder erzeugen |
-| `--check` | nur prüfen; Exit-Code 2 = HOCH, 1 = MITTEL, 0 = sauber |
-| `--show-values` | Werte im Bericht nicht maskieren |
-| `--json DATEI` | Prüfbericht zusätzlich als JSON |
-| `--no-ner` | KI-Namenserkennung ausschalten |
-| `--inspect` | Analyse ohne Schwärzung |
-| `--debug-barcodes` | Barcode-Diagnose mit Debug-PNGs |
-| `--version` | Version anzeigen |
+| `-t, --terms FILE` | redact your own terms |
+| `-o, --out FILE` | output file name (default: `<name>_anonym.pdf`) |
+| `--pages 1,3-6` | keep only these pages |
+| `--region S:x0,y0,x1,y1` | redact an area by hand, can be repeated |
+| `--keep-dates` | do not redact dates |
+| `--keep-images` | do not remove images and barcodes |
+| `--remove-scans` | black out scans completely instead of OCR |
+| `--redact-unreadable` | also redact text without a Unicode mapping |
+| `--barcode-pad PT` | extra margin around barcodes (default 4 pt) |
+| `--no-preview` | do not render preview images |
+| `--check` | check only; exit code 2 = HIGH, 1 = MEDIUM, 0 = clean |
+| `--show-values` | do not mask values in the report |
+| `--json FILE` | also save the check report as JSON |
+| `--no-ner` | turn off AI name recognition |
+| `--inspect` | analysis without redaction |
+| `--debug-barcodes` | barcode diagnosis with debug PNGs |
+| `--version` | show version |
 
 ---
 
-## Fehlerbehebung
+## Troubleshooting
 
-| Problem | Ursache und Lösung |
+| Problem | Cause and fix |
 |---|---|
-| `unrecognized arguments` | Alte Version. Mit `--version` prüfen und die neue Datei über `anonywiz.py` kopieren. |
-| Ganze Seite schwarz | Die Seite ist ein Scan, Tesseract fehlt. Tesseract installieren, sonst `--remove-scans` verwenden. |
-| Text in der Vorschau markierbar, Skript meldet «kein auslesbarer Text» | macOS Live Text erkennt Text in Bildern nur auf dem Bildschirm. Die Datei ist trotzdem ein Scan. |
-| Barcode teilweise sichtbar | `--barcode-pad 10` versuchen, sonst `--debug-barcodes` und `--region`. |
-| «Möglicher Barcode-Rest» beim Kantonswappen | Falscher Alarm (Wellenlinien im Logo). |
-| `error: externally-managed-environment` bei pip | Die venv aus der Installation verwenden. |
-| `Datei nicht gefunden` | Dateinamen mit Leerzeichen in Anführungszeichen setzen oder die Datei ins Terminal ziehen. |
-| `ist kein PDF` | EasyTax-Datendatei statt PDF. In EasyTax als PDF drucken bzw. exportieren. |
+| `unrecognized arguments` | Old version. Check with `--version` and replace `anonywizard.py` with the new file. |
+| Whole page black | The page is a scan and Tesseract is missing. Install Tesseract, or use `--remove-scans`. |
+| Text selectable in macOS Preview, script reports "kein auslesbarer Text" (no readable text) | macOS Live Text recognises text in images on screen only. The file is still a scan. |
+| Barcode partly visible | Try `--barcode-pad 10`, otherwise `--debug-barcodes` and `--region`. |
+| "Möglicher Barcode-Rest" (possible barcode remnant) on the canton's coat of arms | False alarm (wave lines in the logo). |
+| `error: externally-managed-environment` from pip | Use the venv from the installation section. |
+| `Datei nicht gefunden` (file not found) | Put file names with spaces in quotes, or drag the file into the terminal. |
+| `ist kein PDF` (not a PDF) | EasyTax data file instead of a PDF. Print or export it as PDF from EasyTax. |
 
 ---
 
-## Grenzen
+## Limitations
 
-- Die Erkennung arbeitet heuristisch. Eine automatische Prüfung ersetzt den Blick auf die Vorschau nicht.
-- OCR übersieht Handschrift, Stempel und schlecht gescannte Stellen.
-- Schwärze lieber zu viel als zu wenig. Nicht benötigte Seiten entfernst du mit `--pages`.
-- Noch sicherer ist es, nur die benötigten Zahlen abzutippen, statt ein PDF weiterzugeben.
+- Detection is heuristic. An automated check does not replace looking at the preview.
+- OCR misses handwriting, stamps and poorly scanned areas.
+- Redact too much rather than too little. Remove pages you don't need with `--pages`.
+- Safer still: type out only the figures you need instead of sharing a PDF.
+
+---
+
+## Disclaimer
+
+This software is provided **"as is"**, without warranty or guarantee of any kind, express or implied. In particular, there is no guarantee that all sensitive data will be detected and removed.
+
+- You use it **at your own risk**. Check every result yourself before sharing a document.
+- The authors are not liable for any damage, data loss or disclosure of personal data resulting from its use.
+- This tool is **not tax, legal or data protection advice**.
+
+## License
+
+Freely available under the [MIT License](LICENSE): you may use, copy, modify and distribute the code free of charge, including commercially. The license notice must be retained.
