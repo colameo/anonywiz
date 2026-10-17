@@ -1,0 +1,12 @@
+terms.txt
+*.pdf
+*.png
+*.json
+*_preview/
+*_debug/
+.idea/
+.vscode/
+.DS_Store
+__pycache__/
+.venv/
+*-venv/

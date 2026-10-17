@@ -1,0 +1,7 @@
+# Vorlage: kopieren nach terms.txt und eigene Begriffe eintragen
+Muster
+Peter
+Bahnhofstrasse
+Aarau
+Beispiel GmbH
+123 456
