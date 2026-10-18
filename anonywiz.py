@@ -122,6 +122,11 @@ def find_hits(page, patterns, terms, tp=None):
     return hits
 
 
+def _area(r):
+    """Fläche eines Rects (Rect.get_area gibt es erst in neuen PyMuPDF-Versionen)."""
+    return max(r.width, 0) * max(r.height, 0)
+
+
 SCAN_MIN_AREA = 0.25  # Bild ab 25 % der Seitenfläche gilt als Scan
 _TESS = "unset"
 
@@ -129,10 +134,10 @@ _TESS = "unset"
 def split_images(page):
     """(kleine Bilder, Scans). Kleine Bilder (Logos, Barcodes) werden entfernt,
     Scans werden per OCR geprüft und nur stellenweise übermalt."""
-    pa = page.rect.get_area()
+    pa = _area(page.rect)
     small, scans = [], []
     for r in image_boxes(page):
-        (scans if (r & page.rect).get_area() >= SCAN_MIN_AREA * pa else small).append(r)
+        (scans if _area(r & page.rect) >= SCAN_MIN_AREA * pa else small).append(r)
     return small, scans
 
 
@@ -348,12 +353,12 @@ def _cores(elems, paths, page):
     # A: ursprüngliche Erkennung (bewährt)
     small = [r for r in elems if min(r.width, r.height) <= 6 and max(r.width, r.height) <= 80]
     for bbox, n, area in _cluster(small, tol=2.5):
-        if n >= 15 and bbox.width >= 15 and bbox.height >= 8 and area / max(bbox.get_area(), 1) >= 0.15:
+        if n >= 15 and bbox.width >= 15 and bbox.height >= 8 and area / max(_area(bbox), 1) >= 0.15:
             found["A"].append(bbox)
     # B: tolerantere Erkennung (hohe Balken, grössere Lücken)
     small = [r for r in elems if min(r.width, r.height) <= 8 and max(r.width, r.height) <= 160]
     for bbox, n, area in _cluster(small, tol=4):
-        if n >= 12 and bbox.width >= 12 and bbox.height >= 8 and area / max(bbox.get_area(), 1) >= 0.12:
+        if n >= 12 and bbox.width >= 12 and bbox.height >= 8 and area / max(_area(bbox), 1) >= 0.12:
             found["B"].append(bbox)
     # C: ein Pfad mit sehr vielen kleinen Teilen = Barcode
     for pr, rects in paths:
@@ -645,7 +650,7 @@ def hidden_text(page):
                 if not page.rect.intersects(r):
                     out.append((r, "Text ausserhalb der Seite", t))
                 if _lum(s["color"]) < 0.3 and any(
-                        (r & d).get_area() > 0.5 * max(r.get_area(), 1) for d in dark):
+                        _area(r & d) > 0.5 * max(_area(r), 1) for d in dark):
                     out.append((r, "Text unter schwarzer Fläche", t))
     return out
 
@@ -1074,9 +1079,9 @@ def main():
             if pg is None or pg == orig:
                 add(page, pct_rect(page, c), "Bereich manuell")
 
-        red_area = sum(a.rect.get_area() for a in page.annots()
+        red_area = sum(_area(a.rect) for a in page.annots()
                        if a.type[0] == fitz.PDF_ANNOT_REDACT)
-        if red_area > 0.5 * page.rect.get_area():
+        if red_area > 0.5 * _area(page.rect):
             print(f"  WARN Seite {orig+1}: über 50 % der Seite würden geschwärzt – "
                   "bitte Vorschau prüfen. Ursache mit --check bzw. --debug-barcodes eingrenzen.")
 

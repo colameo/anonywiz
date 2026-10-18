@@ -188,7 +188,7 @@ def test_barcode_pad_widens_box(tmp_path):
     with fitz.open(p) as doc:
         small = aw.barcode_boxes(doc[0], pad=0)[0]
         big = aw.barcode_boxes(doc[0], pad=20)[0]
-    assert big.get_area() > small.get_area()
+    assert aw._area(big) > aw._area(small)
 
 
 def test_no_barcode_on_text_page(sample_pdf):
