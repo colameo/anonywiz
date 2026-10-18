@@ -25,7 +25,7 @@ def test_load_terms_none():
     ("1", 5, [0]),
     ("1,3-4", 5, [0, 2, 3]),
     ("2-3,2", 5, [1, 2]),
-    ("4-9", 5, [3, 4]),       # ausserhalb wird abgeschnitten
+    ("4-9", 5, [3, 4]),       # out-of-range pages are cut off
     ("9", 5, []),
     ("0", 5, []),
 ])
@@ -50,7 +50,7 @@ def test_pct_rect():
     assert aw.pct_rect(page, (10, 25, 50, 75)) == fitz.Rect(20, 100, 100, 300)
 
 
-# --- Prüfsummen ---------------------------------------------------------------
+# --- checksums ---------------------------------------------------------------
 
 def test_iban_checksum():
     assert aw._iban_ok(IBAN)
@@ -68,10 +68,10 @@ def test_luhn():
     assert aw._luhn_ok(CARD)
     assert aw._luhn_ok("4111-1111-1111-1111")
     assert not aw._luhn_ok("4111 1111 1111 1112")
-    assert not aw._luhn_ok("1234")  # zu kurz
+    assert not aw._luhn_ok("1234")  # too short
 
 
-# --- Maskierung / Farben --------------------------------------------------------
+# --- masking / colours --------------------------------------------------------
 
 def test_mask():
     assert aw._mask("Muster", True) == "Muster"
@@ -88,8 +88,8 @@ def test_lum():
     assert aw._lum((1, 1, 1)) == pytest.approx(1.0)
     assert aw._lum(0xFFFFFF) == pytest.approx(1.0)
     assert aw._lum(0x000000) == 0
-    assert aw._lum((0, 0, 0, 1)) == 0       # CMYK schwarz
-    assert aw._lum((0, 0, 0, 0)) == 1       # CMYK weiss
+    assert aw._lum((0, 0, 0, 1)) == 0       # CMYK black
+    assert aw._lum((0, 0, 0, 0)) == 1       # CMYK white
 
 
 def test_unreadable():
@@ -98,19 +98,19 @@ def test_unreadable():
     assert aw._unreadable("���")
     assert aw._unreadable("ab")
     assert aw._unreadable("\x01\x02\x03")
-    assert not aw._unreadable("abc\ufffd")  # 25 % < Schwelle
+    assert not aw._unreadable("abc\ufffd")  # 25 % < threshold
 
 
-# --- Regex-Muster -----------------------------------------------------------------
+# --- regex patterns -----------------------------------------------------------------
 
 @pytest.mark.parametrize("key,good,bad", [
-    ("AHV-Nr", [AHV, "7561234567897", "756 1234 5678 97"], ["757.1234.5678.97", "756.123.5678.97"]),
+    ("AHV no.", [AHV, "7561234567897", "756 1234 5678 97"], ["757.1234.5678.97", "756.123.5678.97"]),
     ("IBAN", [IBAN, "LI21 0881 0000 2324 013A A"], ["DE89 3704 0044 0532 0130 00"]),
     ("ISIN", [ISIN, "US0378331005"], ["ch0012221716", "CH001222171"]),
     ("UID", [UID, "CHE 123 456 789", "CHE123456789"], ["CHX-123.456.789"]),
-    ("E-Mail", [EMAIL, "a+b@sub.example.com"], ["kein-at-zeichen"]),
-    ("Telefon", [PHONE, "+41 44 123 45 67", "0041 44 123 45 67", "0441234567"], ["12 345"]),
-    ("Datum", ["01.02.1980", "1.2.2023", "31.12.2099"], ["01.02.1880", "2023-12-31", "32.13.20"]),
+    ("Email", [EMAIL, "a+b@sub.example.com"], ["kein-at-zeichen"]),
+    ("Phone", [PHONE, "+41 44 123 45 67", "0041 44 123 45 67", "0441234567"], ["12 345"]),
+    ("Date", ["01.02.1980", "1.2.2023", "31.12.2099"], ["01.02.1880", "2023-12-31", "32.13.20"]),
 ])
 def test_patterns(key, good, bad):
     rx = re.compile(aw.PATTERNS[key])
@@ -143,7 +143,7 @@ def test_label_rx():
     assert not aw.LABEL_RX.search("Total CHF 1000")
 
 
-# --- Geometrie ------------------------------------------------------------------
+# --- geometry ------------------------------------------------------------------
 
 def test_touch_and_union():
     a, b, c = fitz.Rect(0, 0, 10, 10), fitz.Rect(10, 0, 20, 10), fitz.Rect(30, 0, 40, 10)

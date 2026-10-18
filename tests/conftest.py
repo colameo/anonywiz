@@ -7,7 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import anonywiz  # noqa: E402
 
-# gültige Testwerte (Prüfziffern stimmen)
+# valid test values (check digits are correct)
 AHV = "756.1234.5678.97"
 IBAN = "CH93 0076 2011 6238 5295 7"
 IBAN_BAD = "CH94 0076 2011 6238 5295 7"
@@ -24,12 +24,12 @@ DATE = "Stichtag 31.12.2023"
 
 @pytest.fixture(autouse=True)
 def _no_tesseract(monkeypatch):
-    """Tests laufen unabhängig von einer lokalen Tesseract-Installation."""
+    """Tests run independently of a local Tesseract installation."""
     monkeypatch.setattr(anonywiz, "_TESS", None)
 
 
 def make_pdf(path, lines=(), pages=1, setup=None):
-    """Erzeugt ein PDF mit Textzeilen; setup(doc, page) darf es weiter verändern."""
+    """Creates a PDF with lines of text; setup(doc, page) may modify it further."""
     doc = fitz.open()
     for _ in range(pages):
         page = doc.new_page()

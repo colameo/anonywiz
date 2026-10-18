@@ -1,50 +1,50 @@
 #!/usr/bin/env python3
 """
-anonywiz für Sensitive Dokument lokal zu anonymisieren.
+anonywiz: anonymise sensitive documents locally.
 
-Läuft komplett offline. Echte Schwärzung via PyMuPDF (Text/Bilder werden aus dem PDF
-entfernt, nicht nur überdeckt).
+Runs completely offline. Real redaction via PyMuPDF (text and images are removed from
+the PDF, not just covered).
 
-Entfernt:
-  - Muster: AHV-Nr. (756.xxxx.xxxx.xx), IBAN CH/LI, ISIN/Valoren, UID (CHE-…),
-            E-Mail, CH-Telefonnummern, Datumsangaben (optional abschaltbar),
-            Strasse + Hausnummer, PLZ + Ort
-  - versteckter Text (weiss, Mikroschrift, unter schwarzen Balken)
-  - eigene Begriffe aus terms.txt (Namen, Strasse, Ort, Arbeitgeber, Bank …)
-  - alle Bilder (Barcodes/QR-Codes, Logos)
-  - Metadaten, XMP, eingebettete Dateien (EasyTax bettet teils XML-Daten ein!)
-  - Formularfelder/Annotationen werden vorher in den Seiteninhalt "gebacken",
-    damit deren Inhalt mitgeschwärzt wird
+Removes:
+  - patterns: AHV no. (756.xxxx.xxxx.xx), IBAN CH/LI, ISIN/Valor, UID (CHE-...),
+              email, Swiss phone numbers, dates (can be switched off),
+              street + house number, postcode + town
+  - hidden text (white, micro text, under black bars)
+  - your own terms from terms.txt (names, street, town, employer, bank ...)
+  - all images (barcodes/QR codes, logos)
+  - metadata, XMP, embedded files (EasyTax sometimes embeds XML data!)
+  - form fields/annotations are "baked" into the page content first, so that their
+    content is redacted as well
 
-Danach: automatische Gegenprüfung der Ausgabe + PNG-Vorschau jeder Seite.
+Afterwards: automatic re-check of the output + PNG preview of every page.
 
-Prüfmodus (--check) – verändert nichts, sucht nach:
-  - AHV-Nr (mit Prüfziffer), IBAN (mit Prüfsumme), UID, E-Mail, Telefon, ISIN,
-    Kartennummern (Luhn), Geburtsdaten (Kontext), Strasse+Nr., PLZ+Ort,
-    Namen nach Labels ("Name:", "Ehefrau", "Arbeitgeber" …), Begriffe aus terms.txt
-  - optional KI-Namenserkennung (spaCy, lokal)
-  - Pseudo-Schwärzung (Text unter schwarzen Balken noch auslesbar), weisser Text,
-    Mikroschrift, Text ausserhalb der Seite, nicht auslesbarer Text
-  - Bilder, Barcodes, Annotationen, Formularfelder, Links
-  - Metadaten, XMP, eingebettete Dateien, alte Versionen (inkrementell gespeichert),
-    ausgeblendete Ebenen, JavaScript, Tiefenscan aller PDF-Objekte
-  Exit-Code: 2 = HOCH, 1 = MITTEL, 0 = sauber
+Check mode (--check) - changes nothing, looks for:
+  - AHV no. (with check digit), IBAN (with checksum), UID, email, phone, ISIN,
+    card numbers (Luhn), dates of birth (context), street + no., postcode + town,
+    names after labels ("Name:", "Ehefrau", "Arbeitgeber" ...), terms from terms.txt
+  - optional AI name recognition (spaCy, local)
+  - fake redaction (text under black bars still readable), white text,
+    micro text, text outside the page, unreadable text
+  - images, barcodes, annotations, form fields, links
+  - metadata, XMP, embedded files, old versions (incremental saves),
+    hidden layers, JavaScript, deep scan of all PDF objects
+  Exit code: 2 = HIGH, 1 = MEDIUM, 0 = clean
 
-Installation:  pip install pymupdf
-               für Scans:  brew install tesseract tesseract-lang   (OCR, lokal)
-                           pip install zxing-cpp numpy              (Barcodes im Scan)
-               optional: pip install spacy && python3 -m spacy download de_core_news_md
+Installation:  pipx install git+https://github.com/colameo/anonywiz.git
+               for scans:  brew install tesseract tesseract-lang   (OCR, local)
+               optional:   pip install spacy && python3 -m spacy download de_core_news_md
 
-Scans: Bilder ab 25 % der Seitenfläche gelten als Scan. Sie werden NICHT entfernt,
-sondern lokal per OCR gelesen; nur die gefundenen Stellen werden in den Bildpixeln
-überschrieben. Ohne Tesseract bleibt der Scan ungeprüft (Warnung) – oder --remove-scans.
-Verwendung:    anonywiz steuererklaerung.pdf -t terms.txt
+Scans: images covering 25 % or more of the page count as a scan. They are NOT removed
+but read locally via OCR; only the matches are painted over in the image pixels.
+Without Tesseract the scan stays unchecked (warning) - or use --remove-scans.
+
+Usage:         anonywiz tax_return.pdf -t terms.txt
                anonywiz in.pdf -t terms.txt --keep-dates --pages 3-8
-               anonywiz irgendein.pdf -t terms.txt --check
-               anonywiz in.pdf --check --json bericht.json
+               anonywiz any.pdf -t terms.txt --check
+               anonywiz in.pdf --check --json report.json
 
-terms.txt: ein Begriff pro Zeile, # = Kommentar. Namensteile einzeln aufführen,
-da Reihenfolge variiert ("Muster" und "Peter" statt nur "Peter Muster").
+terms.txt: one term per line, # = comment. List name parts separately, because
+their order varies ("Muster" and "Peter" instead of just "Peter Muster").
 """
 __version__ = "0.1.0"
 
@@ -59,16 +59,16 @@ except ImportError:
     try:
         import fitz
     except ImportError:
-        sys.exit("PyMuPDF fehlt:  pip install pymupdf")
+        sys.exit("PyMuPDF is missing:  pip install pymupdf")
 
 PATTERNS = {
-    "AHV-Nr":   r"\b756[.\s]?\d{4}[.\s]?\d{4}[.\s]?\d{2}\b",
+    "AHV no.":   r"\b756[.\s]?\d{4}[.\s]?\d{4}[.\s]?\d{2}\b",
     "IBAN":     r"\b(?:CH|LI)\d{2}(?:\s?[0-9A-Z]){17}\b",
     "ISIN":     r"\b[A-Z]{2}[A-Z0-9]{9}\d\b",
     "UID":      r"\bCHE[-\s]?\d{3}[.\s]?\d{3}[.\s]?\d{3}\b",
-    "E-Mail":   r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b",
-    "Telefon":  r"(?:\+41|0041|\b0)\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}\b",
-    "Datum":    r"\b\d{1,2}\.\d{1,2}\.(?:19|20)\d{2}\b",
+    "Email":   r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b",
+    "Phone":  r"(?:\+41|0041|\b0)\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}\b",
+    "Date":    r"\b\d{1,2}\.\d{1,2}\.(?:19|20)\d{2}\b",
 }
 
 
@@ -97,8 +97,8 @@ def parse_pages(spec, n):
 
 
 def find_hits(page, patterns, terms, tp=None):
-    """Liefert {Kategorie: [Rects]} für alle Treffer auf der Seite.
-    tp = optionale OCR-Textebene (für eingescannte Seiten)."""
+    """Returns {category: [Rects]} for all matches on the page.
+    tp = optional OCR text layer (for scanned pages)."""
     hits = {}
     text = page.get_text("text", textpage=tp)
 
@@ -111,29 +111,29 @@ def find_hits(page, patterns, terms, tp=None):
             if rects:
                 hits.setdefault(name, []).extend(rects)
     for mo in STREET_RX.finditer(text):
-        hits.setdefault("Strasse/Nr.", []).extend(sf(mo.group()))
+        hits.setdefault("Street/No.", []).extend(sf(mo.group()))
     for mo in PLZ_RX.finditer(text):
         if not (1900 <= int(mo.group(1)) <= 2099 or mo.group(2).lower() in STOPWORDS):
-            hits.setdefault("PLZ/Ort", []).extend(sf(mo.group()))
+            hits.setdefault("Postcode/Town", []).extend(sf(mo.group()))
     for t in terms:
         rects = sf(t)  # case-insensitive
         if rects:
-            hits.setdefault("Begriff", []).extend(rects)
+            hits.setdefault("Term", []).extend(rects)
     return hits
 
 
 def _area(r):
-    """Fläche eines Rects (Rect.get_area gibt es erst in neuen PyMuPDF-Versionen)."""
+    """Area of a Rect (Rect.get_area only exists in recent PyMuPDF versions)."""
     return max(r.width, 0) * max(r.height, 0)
 
 
-SCAN_MIN_AREA = 0.25  # Bild ab 25 % der Seitenfläche gilt als Scan
+SCAN_MIN_AREA = 0.25  # an image covering 25 % of the page counts as a scan
 _TESS = "unset"
 
 
 def split_images(page):
-    """(kleine Bilder, Scans). Kleine Bilder (Logos, Barcodes) werden entfernt,
-    Scans werden per OCR geprüft und nur stellenweise übermalt."""
+    """(small images, scans). Small images (logos, barcodes) are removed,
+    scans are checked via OCR and only painted over where something was found."""
     pa = _area(page.rect)
     small, scans = [], []
     for r in image_boxes(page):
@@ -142,7 +142,7 @@ def split_images(page):
 
 
 def tesseract_info():
-    """(tessdata-Pfad, Sprache) oder None, falls Tesseract fehlt."""
+    """(tessdata path, language) or None if Tesseract is missing."""
     global _TESS
     if _TESS != "unset":
         return _TESS
@@ -166,7 +166,7 @@ def tesseract_info():
 
 
 def ocr_textpage(page):
-    """OCR-Textebene für die Bildbereiche der Seite (lokal via Tesseract) oder None."""
+    """OCR text layer for the image areas of the page (local, via Tesseract) or None."""
     info = tesseract_info()
     if not info:
         return None
@@ -177,12 +177,12 @@ def ocr_textpage(page):
             kw["tessdata"] = path
         return page.get_textpage_ocr(**kw)
     except Exception as e:
-        print(f"  WARN: OCR fehlgeschlagen ({type(e).__name__}: {e})")
+        print(f"  WARN: OCR failed ({type(e).__name__}: {e})")
         return None
 
 
 def scan_barcodes(page, area, dpi=200):
-    """Barcodes/QR-Codes INNERHALB eines Scans finden (zxing-cpp oder pyzbar, lokal)."""
+    """Find barcodes/QR codes INSIDE a scan (zxing-cpp or pyzbar, local)."""
     pix = page.get_pixmap(dpi=dpi, clip=area, colorspace=fitz.csGRAY)
     sc = 72 / dpi
     boxes = []
@@ -204,18 +204,18 @@ def scan_barcodes(page, area, dpi=200):
                 l, t, w, h = res.rect
                 boxes.append(fitz.Rect(l, t, l + w, t + h))
         except ImportError:
-            return None  # kein Barcode-Leser installiert
+            return None  # no barcode reader installed
     out = []
     for b in boxes:
         r = fitz.Rect(area.x0 + b.x0 * sc, area.y0 + b.y0 * sc,
                       area.x0 + b.x1 * sc, area.y0 + b.y1 * sc)
         m = 4 + 0.1 * max(r.width, r.height)
-        out.append((r + (-m, -m - 6, m, m + 14)) & area)  # inkl. Klartext darunter
+        out.append((r + (-m, -m - 6, m, m + 14)) & area)  # incl. plain text below
     return out
 
 
 def image_boxes(page):
-    """Alle Bildflächen: auch Inline-Bilder und Bilder in Form-XObjects."""
+    """All image areas: also inline images and images in form XObjects."""
     boxes = [fitz.Rect(i["bbox"]) for i in page.get_image_info()]
     for img in page.get_images(full=True):
         boxes.extend(page.get_image_rects(img[0]))
@@ -240,7 +240,7 @@ def _union(a, b):
 
 
 def _cluster(rects, tol):
-    """Rechtecke, die sich (mit Toleranz) berühren, zu Gruppen zusammenfassen."""
+    """Group rectangles that touch each other (within a tolerance)."""
     clusters = []  # [bbox, count, fill_area]
     for r in sorted(rects, key=lambda r: (r.y0, r.x0)):
         hit = [c for c in clusters if _touch(c[0], r, tol)]
@@ -290,11 +290,11 @@ def _merge_boxes(boxes, gap):
     return boxes
 
 
-BARCODE_PAD = 4  # Rand um Barcodes in pt, per --barcode-pad änderbar
+BARCODE_PAD = 4  # margin around barcodes in pt, changeable via --barcode-pad
 
 
 def barcode_remnants(page):
-    """Kleine Gruppen schmaler Balken/Module (z. B. übrig gebliebene Start-/Stopp-Muster)."""
+    """Small groups of narrow bars/modules (e.g. leftover start/stop patterns)."""
     small = []
     for d in page.get_drawings():
         lw = d.get("width") or 0
@@ -312,22 +312,22 @@ def barcode_remnants(page):
 
 
 def _barcode_elements(page):
-    """Alle gezeichneten Einzelelemente (Balken/Module) einer Seite – unabhängig davon,
-    wie gross der umgebende Pfad ist und welche Farbe/Farbraum verwendet wird."""
+    """All individually drawn elements (bars/modules) of a page - regardless of how
+    large the surrounding path is and which colour/colour space is used."""
     pw, ph = page.rect.width, page.rect.height
     elems, paths = [], []
     for d in page.get_drawings():
         lw = d.get("width") or 0
         fill, col = d.get("fill"), d.get("color")
-        filled = fill is not None and _lum(fill) < 0.9      # weisse Hintergründe ignorieren
+        filled = fill is not None and _lum(fill) < 0.9      # ignore white backgrounds
         stroked = col is not None and lw > 0 and _lum(col) < 0.9
         if not (filled or stroked):
             continue
         items = d["items"]
         if any(it[0] == "c" for it in items):
-            continue  # Kurven = Logo/Wappen/Schrift als Grafik, nie ein Barcode
+            continue  # curves = logo/coat of arms/text as graphics, never a barcode
         if filled and items and all(it[0] == "l" for it in items):
-            rects, cur = [], None          # Polygone in einzelne Balken zerlegen
+            rects, cur = [], None          # split polygons into individual bars
             for it in items:
                 r = _item_rect(it, 0)
                 if cur is not None and _touch(cur, r, 0.3) and cur.width < 12:
@@ -350,17 +350,17 @@ def _barcode_elements(page):
 def _cores(elems, paths, page):
     pw, ph = page.rect.width, page.rect.height
     found = {"A": [], "B": [], "C": [], "D": []}
-    # A: ursprüngliche Erkennung (bewährt)
+    # A: original detection (proven)
     small = [r for r in elems if min(r.width, r.height) <= 6 and max(r.width, r.height) <= 80]
     for bbox, n, area in _cluster(small, tol=2.5):
         if n >= 15 and bbox.width >= 15 and bbox.height >= 8 and area / max(_area(bbox), 1) >= 0.15:
             found["A"].append(bbox)
-    # B: tolerantere Erkennung (hohe Balken, grössere Lücken)
+    # B: more tolerant detection (tall bars, larger gaps)
     small = [r for r in elems if min(r.width, r.height) <= 8 and max(r.width, r.height) <= 160]
     for bbox, n, area in _cluster(small, tol=4):
         if n >= 12 and bbox.width >= 12 and bbox.height >= 8 and area / max(_area(bbox), 1) >= 0.12:
             found["B"].append(bbox)
-    # C: ein Pfad mit sehr vielen kleinen Teilen = Barcode
+    # C: one path with very many small parts = barcode
     for pr, rects in paths:
         if len(rects) >= 30 and pr.width < pw * 0.6 and pr.height < ph * 0.5:
             sm = [r for r in rects if min(r.width, r.height) <= 8]
@@ -369,7 +369,7 @@ def _cores(elems, paths, page):
                 for r in sm[1:]:
                     bb = _union(bb, r)
                 found["C"].append(bb)
-    # D: 1D-Strichcode = Reihe paralleler Balken gleicher Höhe (auch breite Lücken)
+    # D: 1D barcode = row of parallel bars of equal height (also wide gaps)
     for vertical in (True, False):
         bars = []
         for r in elems:
@@ -377,7 +377,7 @@ def _cores(elems, paths, page):
             if thin <= 5 and long_ >= 6 and long_ >= 3 * max(thin, 0.1):
                 bars.append(r)
         rows = {}
-        for r in bars:  # nach gemeinsamer Ober-/Unterkante gruppieren
+        for r in bars:  # group by shared top/bottom edge
             a, b = (r.y0, r.y1) if vertical else (r.x0, r.x1)
             rows.setdefault((round(a / 2), round(b / 2)), []).append(r)
         for row in rows.values():
@@ -403,13 +403,13 @@ def _cores(elems, paths, page):
 
 
 def barcode_boxes(page, pad=None, debug=None):
-    """Barcodes finden und KOMPLETT umschliessen (1D, PDF417 inkl. Start-/Stopp-Muster,
-    QR/DataMatrix inkl. Finder-Quadrate, Barcode-Schriften, Klartextnummer)."""
+    """Find barcodes and enclose them COMPLETELY (1D, PDF417 incl. start/stop patterns,
+    QR/DataMatrix incl. finder squares, barcode fonts, plain-text number)."""
     elems, paths = _barcode_elements(page)
     found = _cores(elems, paths, page)
     cores = _merge_boxes(found["A"] + found["B"] + found["C"] + found["D"], gap=10)
 
-    # Kern wachsen lassen – aber begrenzt, damit keine Tabelle "mitgefressen" wird
+    # grow the core - but limited, so that no table gets "swallowed"
     pool = [r for r in elems if max(r.width, r.height) <= 160]
     grown = []
     for c0 in cores:
@@ -435,7 +435,7 @@ def barcode_boxes(page, pad=None, debug=None):
                 if any(k in s["font"].lower() for k in BARCODE_FONTS):
                     r = fitz.Rect(s["bbox"])
                     boxes.append(r + (-2, -r.height * 0.5, 2, r.height * 0.5))
-    for c in grown:  # Klartextnummer direkt unter/über dem Barcode
+    for c in grown:  # plain-text number directly below/above the barcode
         near = c + (-4, -14, 4, 14)
         for s in spans:
             r, t = fitz.Rect(s["bbox"]), s["text"].strip()
@@ -453,7 +453,7 @@ def barcode_boxes(page, pad=None, debug=None):
 
 
 def debug_barcodes(doc, outdir):
-    """Diagnose: zeichnet Kandidaten farbig ein (nicht geschwärzt) + Statistik ohne Inhalte."""
+    """Diagnosis: draws candidates in colour (not redacted) + statistics without contents."""
     outdir.mkdir(exist_ok=True)
     colors = {"A": (0, 0, 1), "B": (0, 0.6, 0), "C": (1, 0.5, 0), "D": (0, 0.7, 0.7)}
     for i, page in enumerate(doc, 1):
@@ -464,10 +464,10 @@ def debug_barcodes(doc, outdir):
             for it in d["items"]:
                 kinds[it[0]] = kinds.get(it[0], 0) + 1
         biggest = max((len(d["items"]) for d in page.get_drawings()), default=0)
-        print(f"Seite {i}: {info['paths']} Pfade, {info['elems']} Elemente, Typen {kinds}, "
-              f"grösster Pfad {biggest} Teile, Bilder {len(split_images(page)[0])}, "
-              f"Scans {len(split_images(page)[1])} | "
-              f"Kandidaten A={len(info['found']['A'])} B={len(info['found']['B'])} "
+        print(f"Page {i}: {info['paths']} paths, {info['elems']} elements, types {kinds}, "
+              f"largest path {biggest} parts, images {len(split_images(page)[0])}, "
+              f"scans {len(split_images(page)[1])} | "
+              f"candidates A={len(info['found']['A'])} B={len(info['found']['B'])} "
               f"C={len(info['found']['C'])} D={len(info['found']['D'])} -> final {len(final)}")
         for k, rs in info["found"].items():
             for r in rs:
@@ -477,8 +477,8 @@ def debug_barcodes(doc, outdir):
         for r in image_boxes(page):
             page.draw_rect(r, color=(0.6, 0, 0.6), width=1.5)
         page.get_pixmap(dpi=110).save(outdir / f"debug_seite_{i:02d}.png")
-    print(f"\nDebug-Bilder: {outdir}/  (rot gestrichelt = wird geschwärzt, "
-          "violett = Bild, blau/grün/orange = Erkennungsstufen A/B/C)")
+    print(f"\nDebug images: {outdir}/  (red dashed = will be redacted, "
+          "purple = image, blue/green/orange = detection stages A/B/C)")
 
 
 def _unreadable(s):
@@ -490,8 +490,8 @@ def _unreadable(s):
 
 
 def unreadable_spans(page):
-    """Text, der sichtbar ist, aber nicht als Text auslesbar (Font ohne Unicode-Mapping).
-    Solcher Text wird von der Begriffssuche NICHT gefunden."""
+    """Text that is visible but cannot be read as text (font without Unicode mapping).
+    Such text is NOT found by the term search."""
     out = []
     for b in page.get_text("dict")["blocks"]:
         for l in b.get("lines", []):
@@ -502,7 +502,7 @@ def unreadable_spans(page):
 
 
 def parse_regions(specs):
-    """'2:0,0,100,15' -> Seite 2, Bereich in % (x0,y0,x1,y1). '*' = alle Seiten."""
+    """'2:0,0,100,15' -> page 2, area in % (x0,y0,x1,y1). '*' = all pages."""
     regions = []
     for spec in specs or []:
         pg, coords = spec.split(":")
@@ -517,33 +517,35 @@ def pct_rect(page, c):
 
 
 def inspect(doc):
-    """Diagnose ohne Inhalte auszugeben: nur Positionen in % der Seite."""
+    """Diagnosis without printing contents: only positions in % of the page."""
     def pct(page, r):
         w, h = page.rect.width, page.rect.height
         return f"{r.x0/w*100:.0f},{r.y0/h*100:.0f},{r.x1/w*100:.0f},{r.y1/h*100:.0f}"
     for i, page in enumerate(doc, 1):
         imgs = image_boxes(page)
         unr = unreadable_spans(page)
-        print(f"Seite {i}:")
+        print(f"Page {i}:")
         for r in imgs:
-            print(f"  Bild              --region {i}:{pct(page, r)}")
+            print(f"  Image             --region {i}:{pct(page, r)}")
         for r in barcode_boxes(page):
-            print(f"  Barcode (Vektor)  --region {i}:{pct(page, r)}")
+            print(f"  Barcode (vector)  --region {i}:{pct(page, r)}")
         for r in unr:
-            print(f"  Unlesbarer Text   --region {i}:{pct(page, r)}")
+            print(f"  Unreadable text   --region {i}:{pct(page, r)}")
         if hasattr(page, "cluster_drawings"):
             for r in page.cluster_drawings(x_tolerance=12, y_tolerance=12):
                 if r.width > 20 and r.height > 6 and r.width < page.rect.width * 0.9:
-                    print(f"  Vektorgrafik      --region {i}:{pct(page, r)}")
+                    print(f"  Vector graphic    --region {i}:{pct(page, r)}")
         if not page.get_text().strip():
-            print("  ACHTUNG: kein auslesbarer Text – Seite ist vermutlich ein Scan/Bild")
+            print("  WARNING: no readable text - page is probably a scan/image")
 
 
 # ---------------------------------------------------------------------------
-# Prüfmodus (--check): sensible Informationen erkennen
+# Check mode (--check): detect sensitive information
 # ---------------------------------------------------------------------------
-SEV_ORDER = {"HOCH": 0, "MITTEL": 1, "INFO": 2}
+SEV_ORDER = {"HIGH": 0, "MEDIUM": 1, "INFO": 2}
 
+# German words that look like names/places but are not (the tool targets German-language
+# documents, so the detection vocabulary below is intentionally German)
 STOPWORDS = {
     "abzug", "abzüge", "total", "betrag", "chf", "einkommen", "vermögen", "kanton",
     "gemeinde", "steuer", "steuern", "steuerjahr", "angaben", "seite", "beilage",
@@ -605,10 +607,10 @@ def _lum(c):
 
 
 def hidden_text(page):
-    """Versteckter Text: weiss, Mikroschrift, ausserhalb der Seite, dunkler Text unter
-    schwarzer Fläche (Pseudo-Schwärzung). Liefert [(Rect, Kategorie, Text)]."""
-    # Dunkle Flächen aus den EINZELNEN Teilformen bestimmen – nicht aus dem Umriss
-    # des ganzen Pfads (ein Tabellengitter in einem Pfad umfasst sonst die ganze Seite)
+    """Hidden text: white, micro text, outside the page, dark text under a black
+    area (fake redaction). Returns [(Rect, category, text)]."""
+    # Determine dark areas from the INDIVIDUAL shapes - not from the outline of the
+    # whole path (a table grid in one path would otherwise span the whole page)
     dark = []
     for d in page.get_drawings():
         if d.get("fill") is None or _lum(d["fill"]) >= 0.25:
@@ -629,11 +631,11 @@ def hidden_text(page):
         else:
             parts = [_item_rect(it, 0) for it in items if it[0] in ("re", "qu")]
         for r in parts:
-            if r is not None and r.width >= 4 and r.height >= 4:  # dünne Linien sind keine Balken
+            if r is not None and r.width >= 4 and r.height >= 4:  # thin lines are not bars
                 dark.append(r)
     for a in page.annots():
         if a.type[0] == fitz.PDF_ANNOT_REDACT:
-            continue  # eigene, noch nicht angewendete Schwärzungen ignorieren
+            continue  # ignore our own redactions that have not been applied yet
         if a.colors.get("fill") and _lum(a.colors["fill"]) < 0.25:
             dark.append(a.rect)
     out = []
@@ -644,14 +646,14 @@ def hidden_text(page):
                 if not t:
                     continue
                 if _lum(s["color"]) > 0.95:
-                    out.append((r, "Weisser/unsichtbarer Text", t))
+                    out.append((r, "White/invisible text", t))
                 if s["size"] < 2:
-                    out.append((r, "Mikroschrift (<2pt)", t))
+                    out.append((r, "Micro text (<2pt)", t))
                 if not page.rect.intersects(r):
-                    out.append((r, "Text ausserhalb der Seite", t))
+                    out.append((r, "Text outside the page", t))
                 if _lum(s["color"]) < 0.3 and any(
                         _area(r & d) > 0.5 * max(_area(r), 1) for d in dark):
-                    out.append((r, "Text unter schwarzer Fläche", t))
+                    out.append((r, "Text under black area", t))
     return out
 
 
@@ -669,7 +671,7 @@ def _load_ner():
 
 
 def label_names(text):
-    """Namen direkt nach einem Label ("Ehefrau: Anna Beispiel") als Wortlisten."""
+    """Names directly after a label ("Ehefrau: Anna Beispiel") as word lists."""
     for mo in LABEL_RX.finditer(text):
         words = [w for w in re.split(r"[ ,]+", mo.group(1)) if w]
         words = [w for w in words if w.lower() not in STOPWORDS]
@@ -678,8 +680,8 @@ def label_names(text):
 
 
 def detect_names(doc, use_ner=True, min_len=3):
-    """Namensteile im ganzen Dokument finden (Label-Heuristik + optional spaCy).
-    Jeder Teil wird danach überall als ganzes Wort geschwärzt, auch ohne Label."""
+    """Find name parts in the whole document (label heuristic + optional spaCy).
+    Each part is then redacted everywhere as a whole word, even without a label."""
     nlp = _load_ner() if use_ner else None
     names = set()
     for page in doc:
@@ -696,7 +698,7 @@ def detect_names(doc, use_ner=True, min_len=3):
 
 
 def find_name_hits(page, names, tp=None):
-    """Rects aller Vorkommen der Namen als GANZES Wort (ohne Gross-/Kleinschreibung)."""
+    """Rects of all occurrences of the names as a WHOLE word (case-insensitive)."""
     wanted = {n.lower() for n in names}
     if not wanted:
         return []
@@ -709,7 +711,7 @@ def find_name_hits(page, names, tp=None):
 
 
 def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True):
-    """Findet sensible Informationen. Liefert Liste von dicts
+    """Finds sensitive information. Returns a list of dicts
     {sev, cat, page, value, rect, note}."""
     F = []
 
@@ -725,53 +727,53 @@ def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True)
         tp = ocr_textpage(page) if scans else None
         if scans and tp is None:
             for sr in scans:
-                f("HOCH", "Scan nicht prüfbar", pno, "", sr,
-                  "Tesseract fehlt: brew install tesseract tesseract-lang")
+                f("HIGH", "Scan not checkable", pno, "", sr,
+                  "Tesseract missing: brew install tesseract tesseract-lang")
         text = page.get_text("text", textpage=tp)
 
         def locate(s):
             r = page.search_for(s, textpage=tp)
             return r[0] if r else None
 
-        # --- Muster mit Validierung ---
-        for m in set(re.findall(PATTERNS["AHV-Nr"], text)):
-            f("HOCH", "AHV-Nr", pno, m, locate(m), "Prüfziffer gültig" if _ean13_ok(m) else "")
+        # --- patterns with validation ---
+        for m in set(re.findall(PATTERNS["AHV no."], text)):
+            f("HIGH", "AHV no.", pno, m, locate(m), "check digit valid" if _ean13_ok(m) else "")
         for m in set(re.findall(PATTERNS["IBAN"], text)):
-            f("HOCH" if _iban_ok(m) else "MITTEL", "IBAN", pno, m, locate(m),
-              "Prüfsumme gültig" if _iban_ok(m) else "Prüfsumme ungültig")
-        for key in ("UID", "E-Mail", "Telefon"):
+            f("HIGH" if _iban_ok(m) else "MEDIUM", "IBAN", pno, m, locate(m),
+              "checksum valid" if _iban_ok(m) else "checksum invalid")
+        for key in ("UID", "Email", "Phone"):
             for m in set(re.findall(PATTERNS[key], text)):
-                f("HOCH", key, pno, m, locate(m))
+                f("HIGH", key, pno, m, locate(m))
         for m in set(re.findall(PATTERNS["ISIN"], text)):
-            f("MITTEL", "ISIN/Valor", pno, m, locate(m), "verrät Bank/Depot")
+            f("MEDIUM", "ISIN/Valor", pno, m, locate(m), "reveals bank/custody account")
         for m in set(CARD_RX.findall(text)):
-            if _luhn_ok(m) and not re.match(PATTERNS["AHV-Nr"], m):
-                f("MITTEL", "Kartennummer?", pno, m, locate(m), "Luhn-Prüfung bestanden")
+            if _luhn_ok(m) and not re.match(PATTERNS["AHV no."], m):
+                f("MEDIUM", "Card number?", pno, m, locate(m), "Luhn check passed")
 
-        # Datumsangaben, Geburtsdatum mit Kontext
-        for mo in re.finditer(PATTERNS["Datum"], text):
+        # dates; date of birth via context
+        for mo in re.finditer(PATTERNS["Date"], text):
             ctx = text[max(0, mo.start() - 30):mo.start()]
             if BIRTH_CTX.search(ctx):
-                f("HOCH", "Geburtsdatum", pno, mo.group(), locate(mo.group()))
+                f("HIGH", "Date of birth", pno, mo.group(), locate(mo.group()))
             elif not keep_dates:
-                f("INFO", "Datum", pno, mo.group(), locate(mo.group()))
+                f("INFO", "Date", pno, mo.group(), locate(mo.group()))
 
-        # --- Personen/Adressen (Heuristik) ---
+        # --- people/addresses (heuristic) ---
         for words in label_names(text):
             val = " ".join(words)
-            f("MITTEL", "Name (nach Label)", pno, val, locate(words[0]))
+            f("MEDIUM", "Name (after label)", pno, val, locate(words[0]))
         for mo in STREET_RX.finditer(text):
-            f("HOCH", "Strasse/Hausnr.", pno, mo.group(), locate(mo.group()))
+            f("HIGH", "Street/house no.", pno, mo.group(), locate(mo.group()))
         for mo in PLZ_RX.finditer(text):
             plz = int(mo.group(1))
             if 1900 <= plz <= 2099 or mo.group(2).lower() in STOPWORDS:
-                continue  # wahrscheinlich Jahreszahl
-            f("MITTEL", "PLZ/Ort", pno, mo.group(), locate(mo.group()))
+                continue  # probably a year
+            f("MEDIUM", "Postcode/Town", pno, mo.group(), locate(mo.group()))
 
-        # --- eigene Begriffe ---
+        # --- own terms ---
         for t in terms:
             for r in page.search_for(t, textpage=tp):
-                f("HOCH", "Begriff (terms.txt)", pno, t, r)
+                f("HIGH", "Term (terms.txt)", pno, t, r)
 
         # --- NER (optional, spaCy) ---
         if nlp is not None:
@@ -780,75 +782,75 @@ def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True)
                 if len(v) < 3 or v.lower() in STOPWORDS:
                     continue
                 if ent.label_ == "PER":
-                    f("MITTEL", "Person (NER)", pno, v, locate(v))
+                    f("MEDIUM", "Person (NER)", pno, v, locate(v))
                 elif ent.label_ in ("LOC", "ORG"):
-                    f("INFO", f"{'Ort' if ent.label_ == 'LOC' else 'Organisation'} (NER)",
+                    f("INFO", f"{'Place' if ent.label_ == 'LOC' else 'Organisation'} (NER)",
                       pno, v, locate(v))
 
-        # --- Versteckter / pseudo-geschwärzter Text ---
+        # --- hidden / fake-redacted text ---
         for r, cat, t in hidden_text(page):
-            if cat == "Text unter schwarzer Fläche":
-                f("HOCH", cat, pno, t, r, "Pseudo-Schwärzung: Text ist noch auslesbar")
+            if cat == "Text under black area":
+                f("HIGH", cat, pno, t, r, "Fake redaction: text is still readable")
             else:
-                f("MITTEL", cat, pno, t, r)
+                f("MEDIUM", cat, pno, t, r)
         for r in unreadable_spans(page):
-            f("MITTEL", "Nicht auslesbarer Text", pno, "", r, "visuell prüfen")
+            f("MEDIUM", "Unreadable text", pno, "", r, "check visually")
 
-        # --- Bilder, Barcodes ---
+        # --- images, barcodes ---
         for r in small_imgs:
-            f("INFO" if keep_images else "MITTEL", "Bild", pno, "", r, "kann Namen/Logos enthalten")
+            f("INFO" if keep_images else "MEDIUM", "Image", pno, "", r, "may contain names/logos")
         for sr in scans:
             if tp is not None:
-                f("INFO", "Scan (per OCR geprüft)", pno, "", sr,
-                  "OCR ist nicht perfekt – Handschrift/Stempel visuell prüfen")
+                f("INFO", "Scan (checked via OCR)", pno, "", sr,
+                  "OCR is not perfect - check handwriting/stamps visually")
             sb = scan_barcodes(page, sr)
             if sb is None:
-                f("MITTEL", "Barcodes im Scan nicht prüfbar", pno, "", sr, "pip install zxing-cpp numpy")
+                f("MEDIUM", "Barcodes in scan not checkable", pno, "", sr, "pip install zxing-cpp numpy")
             else:
                 for r in sb:
-                    f("HOCH", "Barcode im Scan", pno, "", r)
+                    f("HIGH", "Barcode in scan", pno, "", r)
         bcs = barcode_boxes(page)
         for r in bcs:
-            f("HOCH", "Barcode", pno, "", r, "enthält oft die kompletten Daten")
+            f("HIGH", "Barcode", pno, "", r, "often contains the complete data")
         for r in barcode_remnants(page):
             if not any(_touch(r, b) for b in bcs):
-                f("MITTEL", "Möglicher Barcode-Rest", pno, "", r,
-                  "schmale Balkengruppe – visuell prüfen, ggf. --region/--barcode-pad")
+                f("MEDIUM", "Possible barcode remnant", pno, "", r,
+                  "narrow group of bars - check visually, maybe use --region/--barcode-pad")
 
-        # --- Annotationen, Formularfelder, Links ---
+        # --- annotations, form fields, links ---
         for a in page.annots():
             info = a.info.get("content", "") or a.info.get("title", "")
-            f("MITTEL", f"Annotation ({a.type[1]})", pno, info, a.rect)
+            f("MEDIUM", f"Annotation ({a.type[1]})", pno, info, a.rect)
         for w in page.widgets():
             if w.field_value not in (None, "", "Off", False):
-                f("HOCH", "Formularfeld mit Wert", pno, f"{w.field_name}={w.field_value}", w.rect)
+                f("HIGH", "Form field with value", pno, f"{w.field_name}={w.field_value}", w.rect)
         for ln in page.get_links():
             if ln.get("uri"):
                 f("INFO", "Link", pno, ln["uri"], ln.get("from"))
 
-    # --- Dokumentebene ---
+    # --- document level ---
     for k, v in (doc.metadata or {}).items():
         if v and k not in ("format", "encryption"):
-            f("MITTEL", f"Metadaten: {k}", None, v)
+            f("MEDIUM", f"Metadata: {k}", None, v)
     if doc.get_xml_metadata().strip():
-        f("MITTEL", "XMP-Metadaten", None, "", None, "können Autor/Software/Pfade enthalten")
+        f("MEDIUM", "XMP metadata", None, "", None, "may contain author/software/paths")
     for name in doc.embfile_names():
-        f("HOCH", "Eingebettete Datei", None, name, None, "z. B. XML mit allen Steuerdaten")
+        f("HIGH", "Embedded file", None, name, None, "e.g. XML with all tax data")
     if getattr(doc, "version_count", 1) > 1:
-        f("HOCH", "Inkrementelle Speicherung", None, f"{doc.version_count} Versionen", None,
-          "ältere Version mit Originaldaten evtl. noch in der Datei")
+        f("HIGH", "Incremental save", None, f"{doc.version_count} versions", None,
+          "an older version with the original data may still be in the file")
     try:
         ocgs = doc.get_ocgs() or {}
         if ocgs:
             hidden = [o["name"] for o in ocgs.values() if not o.get("on", True)]
-            f("MITTEL" if hidden else "INFO", "PDF-Ebenen (OCG)", None,
-              ", ".join(hidden) or f"{len(ocgs)} Ebene(n)", None,
-              "ausgeblendete Ebenen gefunden" if hidden else "")
+            f("MEDIUM" if hidden else "INFO", "PDF layers (OCG)", None,
+              ", ".join(hidden) or f"{len(ocgs)} layer(s)", None,
+              "hidden layers found" if hidden else "")
     except Exception:
         pass
 
-    # --- Tiefenscan Rohdaten (alle Objekte ausser Seiteninhalt/Bilder/Fonts) ---
-    raw_rx = [(k, re.compile(PATTERNS[k])) for k in ("AHV-Nr", "IBAN", "E-Mail")]
+    # --- deep scan of raw data (all objects except page content/images/fonts) ---
+    raw_rx = [(k, re.compile(PATTERNS[k])) for k in ("AHV no.", "IBAN", "Email")]
     for xref in range(1, doc.xref_length()):
         try:
             obj = doc.xref_object(xref, compressed=False)
@@ -857,7 +859,7 @@ def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True)
         if xref in content_xrefs or "/Image" in obj or "/FontFile" in obj or "/Form" in obj:
             continue
         if "/JavaScript" in obj or "/JS " in obj or "/JS(" in obj:
-            f("MITTEL", "JavaScript", None, f"Objekt {xref}")
+            f("MEDIUM", "JavaScript", None, f"Object {xref}")
         data = obj
         if doc.xref_is_stream(xref):
             try:
@@ -867,16 +869,16 @@ def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True)
         low = data.lower()
         for t in terms:
             if t.lower() in low:
-                f("HOCH", "Rohdaten: Begriff", None, t, None, f"in PDF-Objekt {xref}")
+                f("HIGH", "Raw data: term", None, t, None, f"in PDF object {xref}")
         for k, rx in raw_rx:
             for m in set(rx.findall(data)):
-                f("HOCH", f"Rohdaten: {k}", None, m, None, f"in PDF-Objekt {xref}")
+                f("HIGH", f"Raw data: {k}", None, m, None, f"in PDF object {xref}")
     return F
 
 
 def print_report(F, doc, show_values=False):
     if not F:
-        print("Prüfung: keine sensiblen Informationen gefunden.")
+        print("Check: no sensitive information found.")
         return
     seen, rows = set(), []
     for x in sorted(F, key=lambda x: (SEV_ORDER[x["sev"]], x["page"] or 0, x["cat"])):
@@ -891,22 +893,22 @@ def print_report(F, doc, show_values=False):
             reg = (f"--region {x['page']}:{max(0, r.x0/pr.width*100-0.5):.1f},"
                    f"{max(0, r.y0/pr.height*100-0.5):.1f},{min(100, r.x1/pr.width*100+0.5):.1f},"
                    f"{min(100, r.y1/pr.height*100+0.5):.1f}")
-        pg = f"S.{x['page']}" if x["page"] else "Dok"
+        pg = f"p.{x['page']}" if x["page"] else "Doc"
         val = _mask(x["value"], show_values) if x["value"] else ""
         note = f"  ({x['note']})" if x["note"] else ""
         rows.append(f"  [{x['sev']:<6}] {pg:<5} {x['cat']:<28} {val:<26}{note}"
                     + (f"\n{'':<45}{reg}" if reg else ""))
     print("\n".join(rows))
     c = {s: sum(1 for x in F if x["sev"] == s) for s in SEV_ORDER}
-    print(f"\nZusammenfassung: {c['HOCH']} HOCH, {c['MITTEL']} MITTEL, {c['INFO']} INFO")
+    print(f"\nSummary: {c['HIGH']} HIGH, {c['MEDIUM']} MEDIUM, {c['INFO']} INFO")
 
 
 def run_check(doc, terms, args, label):
     F = scan_document(doc, terms, keep_dates=args.keep_dates,
                       keep_images=args.keep_images, use_ner=not args.no_ner)
-    print(f"\n=== Prüfung: {label} ===")
+    print(f"\n=== Check: {label} ===")
     if not args.no_ner and _load_ner() is None:
-        print("  (Namenserkennung per KI inaktiv – optional: pip install spacy && "
+        print("  (AI name recognition inactive - optional: pip install spacy && "
               "python3 -m spacy download de_core_news_md)")
     print_report(F, doc, args.show_values)
     if args.json:
@@ -916,82 +918,82 @@ def run_check(doc, terms, args, label):
             for x in out:
                 x["value"] = _mask(x["value"], False) if x["value"] else ""
         Path(args.json).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"JSON-Bericht: {args.json}")
+        print(f"JSON report: {args.json}")
     return F
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="anonywiz", description="Steuererklärungen, Lohn- und PK-Ausweise lokal anonymisieren")
+    ap = argparse.ArgumentParser(prog="anonywiz", description="Anonymise tax returns, salary and pension fund statements locally")
     ap.add_argument("pdf")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    ap.add_argument("-t", "--terms", help="Datei mit eigenen Begriffen (Namen, Adresse …)")
-    ap.add_argument("-o", "--out", help="Ausgabe-PDF (Default: <name>_anonym.pdf)")
-    ap.add_argument("--pages", help="nur diese Seiten behalten, z. B. 1,3-6")
-    ap.add_argument("--keep-dates", action="store_true", help="Datumsangaben nicht schwärzen")
+    ap.add_argument("-t", "--terms", help="file with your own terms (names, address ...)")
+    ap.add_argument("-o", "--out", help="output PDF (default: <name>_anonymized.pdf)")
+    ap.add_argument("--pages", help="keep only these pages, e.g. 1,3-6")
+    ap.add_argument("--keep-dates", action="store_true", help="do not redact dates")
     ap.add_argument("--remove-scans", action="store_true",
-                    help="eingescannte Seiten komplett schwärzen statt per OCR prüfen")
-    ap.add_argument("--keep-images", action="store_true", help="Bilder und Barcodes (auch Vektor-Barcodes) nicht entfernen")
-    ap.add_argument("--no-preview", action="store_true", help="keine PNG-Vorschau erzeugen")
+                    help="black out scanned pages completely instead of checking via OCR")
+    ap.add_argument("--keep-images", action="store_true", help="do not remove images and barcodes (also vector barcodes)")
+    ap.add_argument("--no-preview", action="store_true", help="do not render PNG previews")
     ap.add_argument("--region", action="append", metavar="S:x0,y0,x1,y1",
-                    help="Bereich manuell schwärzen, Koordinaten in %% der Seite, "
-                         "S = Seitennr. (Original) oder * für alle. Mehrfach möglich.")
+                    help="redact an area by hand, coordinates in %% of the page, "
+                         "S = page number (original) or * for all. Can be repeated.")
     ap.add_argument("--redact-unreadable", action="store_true",
-                    help="nicht auslesbaren Text (Font ohne Unicode) ebenfalls schwärzen")
+                    help="also redact unreadable text (font without Unicode mapping)")
     ap.add_argument("--inspect", action="store_true",
-                    help="nur analysieren: Bilder, Vektorgrafiken, unlesbaren Text auflisten")
+                    help="analyse only: list images, vector graphics, unreadable text")
     ap.add_argument("--barcode-pad", type=float, default=4, metavar="PT",
-                    help="zusätzlicher Rand um Barcodes in pt (Default 4, z. B. 10 für mehr Sicherheit)")
+                    help="extra margin around barcodes in pt (default 4, e.g. 10 for more safety)")
     ap.add_argument("--debug-barcodes", action="store_true",
-                    help="Barcode-Erkennung sichtbar machen (Debug-PNGs + Statistik, nichts wird geschwärzt)")
+                    help="visualise barcode detection (debug PNGs + statistics, nothing is redacted)")
     ap.add_argument("--check", action="store_true",
-                    help="nur prüfen: sensible Informationen im PDF suchen, nichts verändern")
+                    help="check only: search the PDF for sensitive information, change nothing")
     ap.add_argument("--show-values", action="store_true",
-                    help="gefundene Werte im Bericht unmaskiert anzeigen")
-    ap.add_argument("--json", metavar="DATEI", help="Prüfbericht zusätzlich als JSON speichern")
-    ap.add_argument("--no-ner", action="store_true", help="KI-Namenserkennung (spaCy) nicht verwenden")
+                    help="show found values unmasked in the report")
+    ap.add_argument("--json", metavar="FILE", help="also save the check report as JSON")
+    ap.add_argument("--no-ner", action="store_true", help="do not use AI name recognition (spaCy)")
     ap.add_argument("--no-auto-names", action="store_true",
-                    help="erkannte Namen (nach Label / spaCy) nicht automatisch im ganzen Dokument schwärzen")
+                    help="do not automatically redact detected names (after label / spaCy) throughout the document")
     args = ap.parse_args()
 
     print(f"anonywiz {__version__}")
     global BARCODE_PAD
     BARCODE_PAD = args.barcode_pad
     src = Path(args.pdf)
-    out = Path(args.out) if args.out else src.with_name(src.stem + "_anonym.pdf")
+    out = Path(args.out) if args.out else src.with_name(src.stem + "_anonymized.pdf")
     terms = load_terms(args.terms)
-    patterns = {k: v for k, v in PATTERNS.items() if not (k == "Datum" and args.keep_dates)}
+    patterns = {k: v for k, v in PATTERNS.items() if not (k == "Date" and args.keep_dates)}
 
     src = src.expanduser()
     if not src.is_file():
         pdfs = sorted(p.name for p in Path.cwd().glob("*.pdf"))
-        sys.exit(f"Datei nicht gefunden: {src}\n"
-                 f"Aktueller Ordner: {Path.cwd()}\n"
-                 f"PDFs hier: {', '.join(pdfs) or 'keine'}\n"
-                 "Tipp: Dateinamen mit Leerzeichen in Anführungszeichen setzen, "
-                 "oder die Datei ins Terminal ziehen (Drag & Drop).")
+        sys.exit(f"File not found: {src}\n"
+                 f"Current folder: {Path.cwd()}\n"
+                 f"PDFs here: {', '.join(pdfs) or 'none'}\n"
+                 "Tip: put file names containing spaces in quotes, "
+                 "or drag the file into the terminal.")
     head = src.read_bytes()[:1024]
     if b"%PDF" not in head:
-        sys.exit(f"'{src.name}' ist kein PDF (Dateianfang: {head[:8]!r}).\n"
-                 "EasyTax-Dateien (.tax/.esteuer) sind kein PDF – in EasyTax "
-                 "über 'Drucken/PDF erstellen' exportieren.")
+        sys.exit(f"'{src.name}' is not a PDF (file starts with: {head[:8]!r}).\n"
+                 "EasyTax files (.tax/.esteuer) are not PDFs - export a PDF from EasyTax "
+                 "via 'Print/Create PDF'.")
     try:
         doc = fitz.open(src)
     except Exception as e:
-        sys.exit(f"PDF konnte nicht geöffnet werden: {type(e).__name__}: {e}\n"
-                 "Evtl. beschädigt – in Vorschau öffnen und 'Exportieren als PDF' versuchen.")
+        sys.exit(f"PDF could not be opened: {type(e).__name__}: {e}\n"
+                 "It may be damaged - open it in a viewer and try 'Export as PDF'.")
     if doc.needs_pass:
-        sys.exit("PDF ist passwortgeschützt – bitte zuerst entsperren.")
+        sys.exit("PDF is password-protected - please unlock it first.")
 
     if args.check:
         F = run_check(doc, terms, args, src.name)
-        sys.exit(2 if any(x["sev"] == "HOCH" for x in F)
-                 else 1 if any(x["sev"] == "MITTEL" for x in F) else 0)
+        sys.exit(2 if any(x["sev"] == "HIGH" for x in F)
+                 else 1 if any(x["sev"] == "MEDIUM" for x in F) else 0)
 
-    # Formularfelder & Annotationen in den Seiteninhalt übernehmen
+    # bake form fields & annotations into the page content
     if hasattr(doc, "bake"):
         doc.bake()
     else:
-        print("WARN: PyMuPDF zu alt für doc.bake() – Formularfelder bleiben evtl. erhalten. "
+        print("WARN: PyMuPDF too old for doc.bake() - form fields may be preserved. "
               "Update: pip install -U pymupdf")
 
     if args.inspect:
@@ -1003,11 +1005,11 @@ def main():
 
     auto_names = [] if args.no_auto_names else detect_names(doc, use_ner=not args.no_ner)
     if auto_names:
-        print(f"Automatisch erkannte Namen ({len(auto_names)}): "
-              f"{', '.join(_mask(n, False) for n in auto_names)} – werden überall geschwärzt "
-              "(abschalten: --no-auto-names)")
+        print(f"Automatically detected names ({len(auto_names)}): "
+              f"{', '.join(_mask(n, False) for n in auto_names)} - redacted everywhere "
+              "(disable: --no-auto-names)")
 
-    # Seiten auswählen
+    # select pages
     keep = parse_pages(args.pages, doc.page_count)
     if len(keep) != doc.page_count:
         doc.select(keep)
@@ -1025,11 +1027,11 @@ def main():
         if scans and not args.remove_scans:
             tp = ocr_textpage(page)
             if tp is None:
-                print(f"  WARN Seite {orig+1}: enthält einen Scan, aber Tesseract (OCR) fehlt – "
-                      "Scan bleibt UNGEPRÜFT stehen! Installieren: brew install tesseract tesseract-lang "
-                      "(oder --remove-scans)")
+                print(f"  WARN page {orig+1}: contains a scan, but Tesseract (OCR) is missing - "
+                      "the scan stays UNCHECKED! Install: brew install tesseract tesseract-lang "
+                      "(or use --remove-scans)")
             else:
-                stats["Scan per OCR geprüft"] = stats.get("Scan per OCR geprüft", 0) + 1
+                stats["Scan checked via OCR"] = stats.get("Scan checked via OCR", 0) + 1
 
         for name, rects in find_hits(page, patterns, terms, tp).items():
             for r in rects:
@@ -1037,31 +1039,31 @@ def main():
 
         if not args.keep_images:
             for r in small_imgs:
-                add(page, r, "Bild/Barcode")
+                add(page, r, "Image/Barcode")
             for r in barcode_boxes(page):
-                add(page, r, "Vektor-Barcode")
+                add(page, r, "Vector barcode")
             for sr in scans:
                 if args.remove_scans:
-                    add(page, sr, "Scan entfernt")
+                    add(page, sr, "Scan removed")
                     continue
                 bcs = scan_barcodes(page, sr)
                 if bcs is None:
-                    print(f"  WARN Seite {orig+1}: Barcodes im Scan nicht prüfbar – "
+                    print(f"  WARN page {orig+1}: barcodes in scan not checkable - "
                           "pip install zxing-cpp numpy")
                 else:
                     for r in bcs:
-                        add(page, r, "Barcode im Scan")
+                        add(page, r, "Barcode in scan")
 
         for r in find_name_hits(page, auto_names, tp):
-            add(page, r, "Name (automatisch)")
+            add(page, r, "Name (automatic)")
 
         hid = hidden_text(page)
         n_spans = sum(1 for b in page.get_text("dict")["blocks"] for l in b.get("lines", [])
                       for sp in l["spans"] if sp["text"].strip())
         if hid and n_spans and len(hid) > 0.3 * n_spans:
-            print(f"  WARN Seite {orig+1}: {len(hid)} von {n_spans} Textstellen gelten als "
-                  "versteckt – wirkt wie Fehlerkennung, wird NICHT geschwärzt. "
-                  "Bitte visuell prüfen (--check zeigt die Stellen).")
+            print(f"  WARN page {orig+1}: {len(hid)} of {n_spans} text spans count as "
+                  "hidden - looks like a false detection, NOT redacted. "
+                  "Please check visually (--check shows the places).")
         else:
             for r, cat, _ in hid:
                 add(page, r, cat)
@@ -1070,42 +1072,42 @@ def main():
         if unr:
             if args.redact_unreadable:
                 for r in unr:
-                    add(page, r, "Unlesbarer Text")
+                    add(page, r, "Unreadable text")
             else:
-                print(f"  WARN Seite {orig+1}: {len(unr)} Textstelle(n) nicht auslesbar – "
-                      "werden von der Suche nicht gefunden. --inspect bzw. --redact-unreadable nutzen")
+                print(f"  WARN page {orig+1}: {len(unr)} text span(s) not readable - "
+                      "not found by the search. Use --inspect or --redact-unreadable")
 
         for pg, c in regions:
             if pg is None or pg == orig:
-                add(page, pct_rect(page, c), "Bereich manuell")
+                add(page, pct_rect(page, c), "Manual region")
 
         red_area = sum(_area(a.rect) for a in page.annots()
                        if a.type[0] == fitz.PDF_ANNOT_REDACT)
         if red_area > 0.5 * _area(page.rect):
-            print(f"  WARN Seite {orig+1}: über 50 % der Seite würden geschwärzt – "
-                  "bitte Vorschau prüfen. Ursache mit --check bzw. --debug-barcodes eingrenzen.")
+            print(f"  WARN page {orig+1}: over 50 % of the page would be redacted - "
+                  "please check the preview. Narrow down the cause with --check or --debug-barcodes.")
 
-        # Scans: nur die betroffenen Pixel übermalen, nicht das ganze Bild entfernen
+        # scans: paint over only the affected pixels, do not remove the whole image
         keep_scan = scans and not args.remove_scans
         kw = {"images": fitz.PDF_REDACT_IMAGE_PIXELS if keep_scan else fitz.PDF_REDACT_IMAGE_REMOVE}
         if hasattr(fitz, "PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED"):
             kw["graphics"] = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED
         page.apply_redactions(**kw)
 
-    # Metadaten & Anhänge entfernen
+    # remove metadata & attachments
     doc.set_metadata({})
     doc.del_xml_metadata()
     for name in list(doc.embfile_names()):
         doc.embfile_del(name)
-        stats["Anhang"] = stats.get("Anhang", 0) + 1
+        stats["Attachment"] = stats.get("Attachment", 0) + 1
 
     doc.save(out, garbage=4, deflate=True, clean=True)
     doc.close()
 
-    # Gegenprüfung der Ausgabe
+    # re-check the output
     check = fitz.open(out)
     F = run_check(check, terms, args, out.name)
-    leftovers = sum(1 for x in F if x["sev"] in ("HOCH", "MITTEL"))
+    leftovers = sum(1 for x in F if x["sev"] in ("HIGH", "MEDIUM"))
 
     if not args.no_preview:
         prev_dir = out.with_name(out.stem + "_preview")
@@ -1114,14 +1116,14 @@ def main():
             page.get_pixmap(dpi=110).save(prev_dir / f"seite_{i:02d}.png")
     check.close()
 
-    print(f"\nGespeichert: {out}")
-    print("Geschwärzt:", ", ".join(f"{k} {v}x" for k, v in stats.items()) or "nichts")
-    print("Gegenprüfung:", "OK – nichts Sensibles mehr gefunden" if leftovers == 0
-          else f"{leftovers} Fund(e) HOCH/MITTEL – siehe Bericht oben, ggf. mit --region nachschwärzen")
+    print(f"\nSaved:       {out}")
+    print("Redacted:   ", ", ".join(f"{k} {v}x" for k, v in stats.items()) or "nothing")
+    print("Re-check:   ", "OK - nothing sensitive found" if leftovers == 0
+          else f"{leftovers} finding(s) HIGH/MEDIUM - see report above, redact more with --region if needed")
     if not args.no_preview:
-        print(f"Vorschau:    {prev_dir}/  -> bitte jede Seite kurz durchsehen")
-    print("\nHinweis: Die automatische Erkennung ist heuristisch. Namen ohne Label, die "
-          "nicht in terms.txt stehen, können durchrutschen – Vorschau immer visuell prüfen.")
+        print(f"Preview:     {prev_dir}/  -> please look through every page")
+    print("\nNote: automatic detection is heuristic. Names without a label that are "
+          "not in terms.txt can slip through - always check the preview visually.")
 
 
 if __name__ == "__main__":

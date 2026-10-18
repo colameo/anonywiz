@@ -1,4 +1,4 @@
-# Vorlage: kopieren nach terms.txt und eigene Begriffe eintragen
+# Template: copy to terms.txt and enter your own terms
 Muster
 Peter
 Bahnhofstrasse

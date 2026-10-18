@@ -10,7 +10,7 @@ pipx install git+https://github.com/colameo/anonywiz.git
 
 Show the version with `anonywiz --version`.
 
-> The tool targets German-language documents. Its messages and reports are in German.
+> The tool targets Swiss, German-language documents (the label and address detection looks for German words such as "Ehefrau" or "Bahnhofstrasse"). Its messages and reports are in English.
 
 ---
 
@@ -116,19 +116,19 @@ anonywiz tax_return.pdf -t terms.txt
 
 Output in the same folder:
 
-- `tax_return_anonym.pdf`: the redacted file
-- `tax_return_anonym_preview/`: one PNG per page for review
+- `tax_return_anonymized.pdf`: the redacted file
+- `tax_return_anonymized_preview/`: one PNG per page for review
 
 ### 3. Read the report
 
 The re-check is printed at the end:
 
 ```
-Geschwärzt: AHV-Nr 1x, IBAN 1x, Begriff 9x, Vektor-Barcode 1x, …
-Gegenprüfung: OK – nichts Sensibles mehr gefunden
+Redacted:    AHV no. 1x, IBAN 1x, Term 9x, Vector barcode 1x, ...
+Re-check:    OK - nothing sensitive found
 ```
 
-("Redacted: …" / "Re-check: OK – nothing sensitive found".) If it reports findings, each comes with a ready-made `--region` parameter to redact it.
+If it reports findings, each comes with a ready-made `--region` parameter to redact it.
 
 ### 4. Look at the preview
 
@@ -213,7 +213,7 @@ anonywiz file.pdf -t terms.txt --remove-scans
 | Option | Effect |
 |---|---|
 | `-t, --terms FILE` | redact your own terms |
-| `-o, --out FILE` | output file name (default: `<name>_anonym.pdf`) |
+| `-o, --out FILE` | output file name (default: `<name>_anonymized.pdf`) |
 | `--pages 1,3-6` | keep only these pages |
 | `--region S:x0,y0,x1,y1` | redact an area by hand, can be repeated |
 | `--keep-dates` | do not redact dates |
@@ -238,14 +238,14 @@ anonywiz file.pdf -t terms.txt --remove-scans
 | Problem | Cause and fix |
 |---|---|
 | `unrecognized arguments` | Old version. Check with `--version` and update with `pipx upgrade anonywiz`. |
-| A common word was blacked out everywhere | It was detected as a name (shown as "Automatisch erkannte Namen" at the start). Run again with `--no-auto-names`, or fix the label in the source. |
+| A common word was blacked out everywhere | It was detected as a name (shown as "Automatically detected names" at the start). Run again with `--no-auto-names`, or fix the label in the source. |
 | Whole page black | The page is a scan and Tesseract is missing. Install Tesseract, or use `--remove-scans`. |
-| Text selectable in macOS Preview, script reports "kein auslesbarer Text" (no readable text) | macOS Live Text recognises text in images on screen only. The file is still a scan. |
+| Text selectable in macOS Preview, script reports "no readable text" | macOS Live Text recognises text in images on screen only. The file is still a scan. |
 | Barcode partly visible | Try `--barcode-pad 10`, otherwise `--debug-barcodes` and `--region`. |
-| "Möglicher Barcode-Rest" (possible barcode remnant) on the canton's coat of arms | False alarm (wave lines in the logo). |
+| "Possible barcode remnant" on the canton's coat of arms | False alarm (wave lines in the logo). |
 | `error: externally-managed-environment` from pip | Install with pipx as described in the installation section. |
-| `Datei nicht gefunden` (file not found) | Put file names with spaces in quotes, or drag the file into the terminal. |
-| `ist kein PDF` (not a PDF) | EasyTax data file instead of a PDF. Print or export it as PDF from EasyTax. |
+| `File not found` | Put file names with spaces in quotes, or drag the file into the terminal. |
+| `is not a PDF` | EasyTax data file instead of a PDF. Print or export it as PDF from EasyTax. |
 
 ---
 
@@ -303,10 +303,10 @@ For larger changes (new features, refactorings), open an issue first to agree on
 
 ### Guidelines
 
-- Keep the style of the surrounding code: naming, comment density, and German user-facing messages.
+- Keep the style of the surrounding code: naming, comment density, and English user-facing messages and comments (only the detection vocabulary, such as street suffixes and label words, is German).
 - Detection changes need tests with synthetic data and should not weaken what is already caught. Prefer redacting too much over too little.
 - The tool must stay **offline**: no network calls, no telemetry.
-- Do not commit personal data, real documents, `terms.txt` or generated output (`*_anonym.pdf`, `*_preview/`).
+- Do not commit personal data, real documents, `terms.txt` or generated output (`*_anonymized.pdf`, `*_preview/`).
 - Keep dependencies minimal; new ones need a good reason.
 - Update this README when behaviour or options change.
 - Contributions are licensed under the project's [MIT License](LICENSE).
@@ -324,7 +324,7 @@ Run **Actions → Release → Run workflow** and choose:
 | `version` = `x.y.z` | optional, release exactly this version instead of bumping |
 | `dry_run` | build and test only; no commit, tag or release |
 
-The workflow then commits `Release vX.Y.Z` to the branch, runs the tests on Linux, macOS and Windows, builds the wheel/sdist and the standalone binaries, creates the tag `vX.Y.Z` on the tested commit and publishes the GitHub release with checksums and generated notes. The branch must allow pushes from GitHub Actions.
+The workflow then commits `Release vX.Y.Z` to the branch, runs the tests on Linux, macOS and Windows, builds the wheel/sdist and the standalone binaries, creates the tag `vX.Y.Z` on the tested commit and publishes the GitHub release with checksums and release notes that list every commit since the previous release (the automatic `Release vX.Y.Z` commits are left out), plus a compare link. The branch must allow pushes from GitHub Actions.
 
 You can also tag by hand (`git tag vX.Y.Z && git push --tags`); the tag has to match `__version__`.
 
