@@ -335,3 +335,28 @@ def test_polygon_barcode_is_split_into_bars(tmp_path):
     src = make_pdf(tmp_path / "poly.pdf", ["x"], setup=setup)
     with fitz.open(src) as doc:
         assert len(aw.barcode_boxes(doc[0])) >= 1
+
+
+# --- automatische Namen ----------------------------------------------------------------------------
+
+def _name_pdf(tmp_path):
+    return make_pdf(tmp_path / "n.pdf", ["Ehefrau: Anna Beispiel", "Später im Text:",
+                                         "Beispiel und Anna wohnen hier.", "Annahme bleibt."])
+
+
+def test_names_after_label_are_redacted_everywhere(monkeypatch, tmp_path, capsys):
+    src = _name_pdf(tmp_path)
+    out = tmp_path / "o.pdf"
+    run(monkeypatch, src, "-o", out, "--no-ner", "--no-preview")
+    text = page_text(out)
+    assert "Anna" not in text.replace("Annahme", "") and "Beispiel" not in text
+    assert "Annahme bleibt" in text      # ganzes Wort, kein Teilstring
+    msg = capsys.readouterr().out
+    assert "Automatisch erkannte Namen" in msg and "Name (automatisch)" in msg
+
+
+def test_no_auto_names(monkeypatch, tmp_path):
+    src = _name_pdf(tmp_path)
+    out = tmp_path / "o.pdf"
+    run(monkeypatch, src, "-o", out, "--no-ner", "--no-preview", "--no-auto-names")
+    assert "Beispiel und Anna wohnen hier." in page_text(out)

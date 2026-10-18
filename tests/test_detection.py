@@ -369,3 +369,40 @@ def test_print_report(sample_pdf, capsys):
 def test_print_report_empty(capsys):
     aw.print_report([], None)
     assert "keine sensiblen Informationen" in capsys.readouterr().out
+
+
+# --- automatische Namenserkennung ------------------------------------------------------------
+
+def test_label_names_filters_stopwords(tmp_path):
+    assert list(aw.label_names("Ehefrau: Anna Beispiel\n")) == [["Anna", "Beispiel"]]
+    assert list(aw.label_names("Name: Total Betrag")) == []
+    assert list(aw.label_names("Total CHF 1000")) == []
+
+
+def test_detect_names_from_labels(tmp_path):
+    p = make_pdf(tmp_path / "n.pdf", ["Ehemann: Hans Meier-Müller", "Kind: Ida Muster"])
+    with fitz.open(p) as doc:
+        names = aw.detect_names(doc, use_ner=False)
+    assert {"Hans", "Meier", "Müller", "Ida", "Muster"} <= set(names)
+
+
+def test_detect_names_with_stub_ner(sample_pdf, monkeypatch):
+    class Ent:
+        text, label_ = "Dr. Peter Gerber", "PER"
+
+    class Doc:
+        ents = [Ent()]
+
+    monkeypatch.setattr(aw, "_load_ner", lambda: (lambda text: Doc()))
+    with fitz.open(sample_pdf) as doc:
+        names = aw.detect_names(doc, use_ner=True)
+    assert {"Peter", "Gerber"} <= set(names)
+    assert "Dr." not in names  # nicht alphabetisch
+
+
+def test_find_name_hits_whole_words_only(tmp_path):
+    p = make_pdf(tmp_path / "w.pdf", ["Anna wohnt hier", "Annahme ist offen", "von Meier-Müller, Anna."])
+    with fitz.open(p) as doc:
+        hits = aw.find_name_hits(doc[0], ["Anna", "Müller"])
+        assert aw.find_name_hits(doc[0], []) == []
+    assert len(hits) == 3          # "Anna", "Anna.", "Meier-Müller," – nicht "Annahme"

@@ -21,6 +21,7 @@ Current version: `2026-10-17.9` (show with `anonywizard --version`)
 | Patterns | AHV/AVS social security no. (756.xxxx.xxxx.xx), IBAN CH/LI, company UID (CHE-…), ISIN, e-mail, phone, dates |
 | Addresses | street + house number, postcode + town |
 | Your own terms | everything in `terms.txt` (names, company, employer, bank …) |
+| Names found automatically | names after a label ("Ehefrau: Anna Beispiel") and, with spaCy, person names; each name part is then redacted as a whole word everywhere in the document (`--no-auto-names` to disable) |
 | Barcodes | as images, as vector graphics (1D, PDF417, QR) and in barcode fonts, including the human-readable number below |
 | Scans | text recognition (OCR) on the image itself, only the matches are painted over |
 | Hidden content | white text, micro text, text under black bars (fake redaction) |

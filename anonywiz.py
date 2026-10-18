@@ -663,6 +663,46 @@ def _load_ner():
     return None
 
 
+def label_names(text):
+    """Namen direkt nach einem Label ("Ehefrau: Anna Beispiel") als Wortlisten."""
+    for mo in LABEL_RX.finditer(text):
+        words = [w for w in re.split(r"[ ,]+", mo.group(1)) if w]
+        words = [w for w in words if w.lower() not in STOPWORDS]
+        if words:
+            yield words
+
+
+def detect_names(doc, use_ner=True, min_len=3):
+    """Namensteile im ganzen Dokument finden (Label-Heuristik + optional spaCy).
+    Jeder Teil wird danach überall als ganzes Wort geschwärzt, auch ohne Label."""
+    nlp = _load_ner() if use_ner else None
+    names = set()
+    for page in doc:
+        text = page.get_text("text")
+        for words in label_names(text):
+            names.update(words)
+        if nlp is not None:
+            for ent in nlp(text).ents:
+                if ent.label_ == "PER":
+                    names.update(w for w in re.split(r"[\s,]+", ent.text) if w)
+    parts = {p for n in names for p in re.split(r"[-']", n)}   # Meier-Müller -> Meier, Müller
+    return sorted(n for n in parts
+                  if len(n) >= min_len and n.lower() not in STOPWORDS and n.isalpha())
+
+
+def find_name_hits(page, names, tp=None):
+    """Rects aller Vorkommen der Namen als GANZES Wort (ohne Gross-/Kleinschreibung)."""
+    wanted = {n.lower() for n in names}
+    if not wanted:
+        return []
+    out = []
+    for w in page.get_text("words", textpage=tp):
+        token = w[4].strip(".,;:()\"'").lower()
+        if token in wanted or any(p in wanted for p in re.split(r"[-']", token)):
+            out.append(fitz.Rect(w[:4]))
+    return out
+
+
 def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True):
     """Findet sensible Informationen. Liefert Liste von dicts
     {sev, cat, page, value, rect, note}."""
@@ -712,11 +752,9 @@ def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True)
                 f("INFO", "Datum", pno, mo.group(), locate(mo.group()))
 
         # --- Personen/Adressen (Heuristik) ---
-        for mo in LABEL_RX.finditer(text):
-            words = [w for w in re.split(r"[ ,]+", mo.group(1)) if w]
-            if words and not all(w.lower() in STOPWORDS for w in words):
-                val = " ".join(w for w in words if w.lower() not in STOPWORDS)
-                f("MITTEL", "Name (nach Label)", pno, val, locate(val.split()[0]))
+        for words in label_names(text):
+            val = " ".join(words)
+            f("MITTEL", "Name (nach Label)", pno, val, locate(words[0]))
         for mo in STREET_RX.finditer(text):
             f("HOCH", "Strasse/Hausnr.", pno, mo.group(), locate(mo.group()))
         for mo in PLZ_RX.finditer(text):
@@ -906,6 +944,8 @@ def main():
                     help="gefundene Werte im Bericht unmaskiert anzeigen")
     ap.add_argument("--json", metavar="DATEI", help="Prüfbericht zusätzlich als JSON speichern")
     ap.add_argument("--no-ner", action="store_true", help="KI-Namenserkennung (spaCy) nicht verwenden")
+    ap.add_argument("--no-auto-names", action="store_true",
+                    help="erkannte Namen (nach Label / spaCy) nicht automatisch im ganzen Dokument schwärzen")
     args = ap.parse_args()
 
     print(f"anonywizard {__version__}")
@@ -956,6 +996,12 @@ def main():
         debug_barcodes(doc, src.with_name(src.stem + "_debug"))
         return
 
+    auto_names = [] if args.no_auto_names else detect_names(doc, use_ner=not args.no_ner)
+    if auto_names:
+        print(f"Automatisch erkannte Namen ({len(auto_names)}): "
+              f"{', '.join(_mask(n, False) for n in auto_names)} – werden überall geschwärzt "
+              "(abschalten: --no-auto-names)")
+
     # Seiten auswählen
     keep = parse_pages(args.pages, doc.page_count)
     if len(keep) != doc.page_count:
@@ -1000,6 +1046,9 @@ def main():
                 else:
                     for r in bcs:
                         add(page, r, "Barcode im Scan")
+
+        for r in find_name_hits(page, auto_names, tp):
+            add(page, r, "Name (automatisch)")
 
         hid = hidden_text(page)
         n_spans = sum(1 for b in page.get_text("dict")["blocks"] for l in b.get("lines", [])
