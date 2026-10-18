@@ -133,6 +133,34 @@ Gegenprüfung: OK – nichts Sensibles mehr gefunden
 
 ---
 
+## Comparison with Microsoft Presidio
+
+[Presidio](https://github.com/microsoft/presidio) is a general PII detection library (analyzer, anonymizer, image redactor) that you assemble into a pipeline. anonywiz is a ready-to-use tool for redacting Swiss PDFs. The ratings below are a subjective assessment for Swiss PDFs (tax returns, salary and pension statements), not benchmarks.
+
+| Feature | anonywiz | Presidio |
+|---|---|---|
+| Ready to use out of the box | ★★★★★ | ★★ |
+| PDF redaction (text and pixels removed) | ★★★★★ | ★★ |
+| Hidden content (white text, micro text, fake redaction) | ★★★★★ | ★ |
+| Metadata, XMP, embedded files | ★★★★★ | ★ |
+| Swiss patterns (AHV, IBAN, UID, Valor, phone, address) | ★★★★★ | ★★ |
+| International entity coverage | ★★ | ★★★★★ |
+| Name and entity recognition (NER) | ★★★ | ★★★★★ |
+| Languages supported | ★★ | ★★★★ |
+| Scans and OCR | ★★★★ | ★★★ |
+| Barcodes and QR codes | ★★★★ | ★ |
+| Self-check and preview of the output | ★★★★★ | ★ |
+| Anonymization options (mask, hash, replace, encrypt) | ★★ | ★★★★★ |
+| Extensibility and architecture | ★★ | ★★★★★ |
+| Free text, databases, pipelines | ★ | ★★★★★ |
+| Offline and privacy | ★★★★★ | ★★★★ |
+| Maturity, testing, community | ★★ | ★★★★★ |
+| Install simplicity | ★★★★ | ★★★ |
+
+anonywiz wins on PDF handling and Swiss data; Presidio wins on general detection, scale and engineering maturity. They combine well: Presidio's analyzer could replace the name detection while anonywiz does the PDF redaction and verification. Both are heuristic and neither guarantees that nothing was missed.
+
+---
+
 ## Tests
 
 ```bash
