@@ -13,3 +13,6 @@ __pycache__/
 terms.txt
 /_docs/
 /.junie/
+*.egg-info/
+build/
+dist/

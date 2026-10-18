@@ -4,7 +4,11 @@ Redacts sensitive data, salary statements and pension fund statements, **locally
 
 The redaction is real: text and image pixels are removed from the PDF, not just covered with black boxes. Afterwards the script automatically re-checks the output and renders a preview image of every page.
 
-Current version: `2026-10-17.9` (show with `python3 anonywizard.py --version`)
+```bash
+pipx install git+https://github.com/colameo/anonywiz.git
+```
+
+Current version: `2026-10-17.9` (show with `anonywizard --version`)
 
 > The tool targets German-language documents. Its messages and reports are in German.
 
@@ -28,21 +32,29 @@ Figures such as salary, assets or deductions stay visible.
 
 ## Installation (macOS)
 
-```bash
-# Python environment (needed because Homebrew Python blocks "pip install")
-python3 -m venv ~/anonywizard-venv
-~/anonywizard-venv/bin/pip install pymupdf zxing-cpp numpy
-
-# Text recognition for scanned pages
-brew install tesseract tesseract-lang
-tesseract --list-langs      # "deu" must be in the list
-```
-
-Then always start the script with `~/anonywizard-venv/bin/python anonywizard.py …`. An alias makes it shorter:
+**1. Install pipx** (once, then open a new terminal):
 
 ```bash
-alias anonywizard='~/anonywizard-venv/bin/python ~/path/to/anonywizard.py'
+brew install pipx && pipx ensurepath
 ```
+
+**2. Install anonywiz:**
+
+```bash
+pipx install git+https://github.com/colameo/anonywiz.git
+```
+
+Done. This provides the commands `anonywizard` and the short alias `anonywiz`:
+
+```bash
+anonywizard --version
+anonywizard file.pdf -t terms.txt
+```
+
+- **Scanned pages (OCR):** Tesseract is a system tool, not installable via pip: `brew install tesseract tesseract-lang` (check: `tesseract --list-langs` must list "deu").
+- **Update:** `pipx upgrade anonywiz`
+- **Optional AI name detection:** `pipx inject anonywiz spacy && ~/.local/pipx/venvs/anonywiz/bin/python -m spacy download de_core_news_md`
+- **From a local checkout:** `pipx install .`
 
 What the packages do:
 
@@ -50,7 +62,7 @@ What the packages do:
 |---|---|---|
 | `pymupdf` | read and redact PDFs | yes |
 | `tesseract` | text recognition in scans | for scans |
-| `zxing-cpp`, `numpy` | find barcodes and QR codes in scans | for scans |
+| `zxing-cpp`, `numpy` | find barcodes and QR codes in scans | yes (installed automatically) |
 | `spacy` + `de_core_news_md` | additional AI name recognition (local) | no |
 
 ---
@@ -174,7 +186,7 @@ anonywizard file.pdf -t terms.txt --remove-scans
 | Text selectable in macOS Preview, script reports "kein auslesbarer Text" (no readable text) | macOS Live Text recognises text in images on screen only. The file is still a scan. |
 | Barcode partly visible | Try `--barcode-pad 10`, otherwise `--debug-barcodes` and `--region`. |
 | "Möglicher Barcode-Rest" (possible barcode remnant) on the canton's coat of arms | False alarm (wave lines in the logo). |
-| `error: externally-managed-environment` from pip | Use the venv from the installation section. |
+| `error: externally-managed-environment` from pip | Install with pipx as described in the installation section. |
 | `Datei nicht gefunden` (file not found) | Put file names with spaces in quotes, or drag the file into the terminal. |
 | `ist kein PDF` (not a PDF) | EasyTax data file instead of a PDF. Print or export it as PDF from EasyTax. |
 

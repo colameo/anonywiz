@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anonywiz"
+version = "2026.10.17.9"
+description = "Steuererklärungen, Lohn- und PK-Ausweise lokal anonymisieren (echte Schwärzung via PyMuPDF)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = ["pymupdf", "zxing-cpp", "numpy"]
+
+[project.optional-dependencies]
+ner = ["spacy"]
+
+[project.scripts]
+anonywiz = "anonywiz:main"
+anonywizard = "anonywiz:main"
+
+[tool.setuptools]
+py-modules = ["anonywiz"]
