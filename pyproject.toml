@@ -13,6 +13,7 @@ dependencies = ["pymupdf", "zxing-cpp", "numpy"]
 
 [project.optional-dependencies]
 ner = ["spacy"]
+dev = ["pytest", "pytest-cov"]
 
 [project.scripts]
 anonywiz = "anonywiz:main"
@@ -20,3 +21,7 @@ anonywizard = "anonywiz:main"
 
 [tool.setuptools]
 py-modules = ["anonywiz"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -30,15 +30,15 @@ Figures such as salary, assets or deductions stay visible.
 
 ---
 
-## Installation (macOS)
+## Installation
 
 **1. Install pipx** (once, then open a new terminal):
 
-```bash
-brew install pipx && pipx ensurepath
-```
+| macOS | Linux (Debian/Ubuntu) | Windows (PowerShell) |
+|---|---|---|
+| `brew install pipx && pipx ensurepath` | `sudo apt install pipx && pipx ensurepath` | `py -m pip install --user pipx` then `py -m pipx ensurepath` |
 
-**2. Install anonywiz:**
+**2. Install anonywiz** (same on every OS):
 
 ```bash
 pipx install git+https://github.com/colameo/anonywiz.git
@@ -51,9 +51,18 @@ anonywizard --version
 anonywizard file.pdf -t terms.txt
 ```
 
-- **Scanned pages (OCR):** Tesseract is a system tool, not installable via pip: `brew install tesseract tesseract-lang` (check: `tesseract --list-langs` must list "deu").
+### Optional extras
+
+- **Scanned pages (OCR):** Tesseract is a system tool, not installable via pip. It must be on the `PATH` and list "deu" in `tesseract --list-langs`.
+
+  | macOS | Linux (Debian/Ubuntu) | Windows |
+  |---|---|---|
+  | `brew install tesseract tesseract-lang` | `sudo apt install tesseract-ocr tesseract-ocr-deu` | Installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), select German under "Additional language data", add its folder to `PATH` |
+
 - **Update:** `pipx upgrade anonywiz`
-- **Optional AI name detection:** `pipx inject anonywiz spacy && ~/.local/pipx/venvs/anonywiz/bin/python -m spacy download de_core_news_md`
+- **Optional AI name detection:** `pipx inject anonywiz spacy`, then download the model into the same environment:
+  `$(pipx environment --value PIPX_LOCAL_VENVS)/anonywiz/bin/python -m spacy download de_core_news_md`
+  (Windows: replace `bin/python` with `Scripts\python.exe`)
 - **From a local checkout:** `pipx install .`
 
 What the packages do:
@@ -121,6 +130,18 @@ Gegenprüfung: OK – nichts Sensibles mehr gefunden
 ### 4. Look at the preview
 
 **Always.** Detection is heuristic. Names without a field label that are not in `terms.txt`, as well as handwriting and stamps in scans, can slip through.
+
+---
+
+## Tests
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest                      # 100+ tests, ~1 s, no Tesseract needed
+.venv/bin/pytest --cov=anonywiz --cov-report=term-missing
+```
+
+The tests build small PDFs on the fly (patterns, hidden text, barcodes, scans, metadata, attachments) and cover the helpers, the detection (`--check`) and the full command line (redaction, `--pages`, `--region`, `--inspect`, exit codes). OCR and spaCy are replaced by stubs.
 
 ---
 
