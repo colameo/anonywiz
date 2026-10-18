@@ -147,6 +147,7 @@ Gegenprüfung: OK – nichts Sensibles mehr gefunden
 | Swiss patterns (AHV, IBAN, UID, Valor, phone, address) | ★★★★★ | ★★ |
 | International entity coverage | ★★ | ★★★★★ |
 | Name and entity recognition (NER) | ★★★ | ★★★★★ |
+| Redacting a detected name everywhere (all occurrences, whole words) | ★★★★ | ★★ |
 | Languages supported | ★★ | ★★★★ |
 | Scans and OCR | ★★★★ | ★★★ |
 | Barcodes and QR codes | ★★★★ | ★ |
@@ -158,7 +159,7 @@ Gegenprüfung: OK – nichts Sensibles mehr gefunden
 | Maturity, testing, community | ★★ | ★★★★★ |
 | Install simplicity | ★★★★ | ★★★ |
 
-anonywiz wins on PDF handling and Swiss data; Presidio wins on general detection, scale and engineering maturity. They combine well: Presidio's analyzer could replace the name detection while anonywiz does the PDF redaction and verification. Both are heuristic and neither guarantees that nothing was missed.
+anonywiz wins on PDF handling and Swiss data; Presidio wins on general detection, scale and engineering maturity. Detected names (after a label, or via spaCy) are redacted throughout the document, but the detection itself is weaker than Presidio's. They combine well: Presidio's analyzer could replace the name detection while anonywiz does the PDF redaction and verification. Both are heuristic and neither guarantees that nothing was missed.
 
 ---
 
