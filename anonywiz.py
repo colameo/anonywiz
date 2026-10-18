@@ -46,7 +46,7 @@ Verwendung:    anonywiz steuererklaerung.pdf -t terms.txt
 terms.txt: ein Begriff pro Zeile, # = Kommentar. Namensteile einzeln aufführen,
 da Reihenfolge variiert ("Muster" und "Peter" statt nur "Peter Muster").
 """
-__version__ = "2026-10-17.9"
+__version__ = "0.1.0"
 
 import argparse
 import re

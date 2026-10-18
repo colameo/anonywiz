@@ -1,17 +1,115 @@
 name: Release
 
-# Release: git tag v<version aus pyproject.toml> && git push --tags
-# Trockenlauf ohne Release: Actions -> Release -> Run workflow
+# Release über die Actions-Oberfläche:  Actions -> Release -> Run workflow
+#   bump = patch | minor | major   erhöht die Version in anonywiz.py (major.minor.patch)
+#   bump = current                 released die Version, wie sie jetzt im Code steht
+#   version = x.y.z                optional: exakte Version statt bump
+#   dry_run = true                 baut und testet nur, ohne Commit, Tag oder Release
+# Der Workflow committet die neue Version auf den Branch, setzt den Tag vX.Y.Z
+# und veröffentlicht das GitHub-Release mit Wheel, sdist und Binaries.
+#
+# Alternativ: selbst taggen (git tag vX.Y.Z && git push --tags); der Tag muss zur
+# Version in anonywiz.py passen.
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Versionssprung (major.minor.patch)"
+        type: choice
+        options: [patch, minor, major, current]
+        default: patch
+      version:
+        description: "Optional: exakte Version x.y.z (überschreibt bump)"
+        type: string
+        required: false
+      dry_run:
+        description: "Nur bauen und testen, nichts committen/taggen/veröffentlichen"
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      sha: ${{ steps.v.outputs.sha }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Version bestimmen und festschreiben
+        id: v
+        env:
+          BUMP: ${{ inputs.bump }}
+          EXACT: ${{ inputs.version }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+
+          SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+          src = open("anonywiz.py", encoding="utf-8").read()
+          cur = re.search(r'^__version__ = "([^"]+)"', src, re.M).group(1)
+          out = open(os.environ["GITHUB_OUTPUT"], "a")
+
+          def sh(*a):
+              return subprocess.run(a, check=True, capture_output=True, text=True).stdout.strip()
+
+          if os.environ["GITHUB_REF_TYPE"] == "tag":
+              version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+              assert version == cur, f"Tag v{version} passt nicht zur Version {cur} in anonywiz.py"
+              assert SEMVER.match(version), f"Version {version} ist nicht major.minor.patch"
+              print(f"Tag-Release {version}")
+              out.write(f"version={version}\nsha={os.environ['GITHUB_SHA']}\npublish=true\n")
+              raise SystemExit
+
+          exact = os.environ["EXACT"].strip().removeprefix("v")
+          bump = os.environ["BUMP"]
+          dry = os.environ["DRY"] == "true"
+          assert SEMVER.match(cur), f"Aktuelle Version {cur} ist nicht major.minor.patch"
+          major, minor, patch = map(int, SEMVER.match(cur).groups())
+          if exact:
+              assert SEMVER.match(exact), f"'{exact}' ist nicht major.minor.patch"
+              version = exact
+          elif bump == "major":
+              version = f"{major + 1}.0.0"
+          elif bump == "minor":
+              version = f"{major}.{minor + 1}.0"
+          elif bump == "patch":
+              version = f"{major}.{minor}.{patch + 1}"
+          else:
+              version = cur
+
+          if dry:
+              print(f"Trockenlauf: würde {version} veröffentlichen (Quellcode bleibt unverändert)")
+              out.write(f"version={version}\nsha={sh('git', 'rev-parse', 'HEAD')}\npublish=false\n")
+              raise SystemExit
+
+          assert not sh("git", "tag", "-l", f"v{version}"), f"Tag v{version} existiert bereits"
+          if version != cur:
+              open("anonywiz.py", "w", encoding="utf-8").write(
+                  re.sub(r'^__version__ = "[^"]+"', f'__version__ = "{version}"', src, count=1, flags=re.M))
+              sh("git", "config", "user.name", "github-actions[bot]")
+              sh("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
+              sh("git", "commit", "-am", f"Release v{version}")
+              sh("git", "push", "origin", f"HEAD:{os.environ['GITHUB_REF_NAME']}")
+          out.write(f"version={version}\nsha={sh('git', 'rev-parse', 'HEAD')}\npublish=true\n")
+          print(f"Release {version} @ {sh('git', 'rev-parse', 'HEAD')}")
+          PY
+
   test:
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,6 +117,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -26,22 +126,15 @@ jobs:
       - run: python -m pytest -q
 
   dist:
-    needs: test
+    needs: [prepare, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Tag muss zur Version in pyproject.toml passen
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          python - <<'PY'
-          import os, tomllib
-          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
-          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
-          assert tag == version, f"Tag v{tag} != pyproject-Version {version}"
-          PY
       - run: python -m pip install build
       - run: python -m build
       - uses: actions/upload-artifact@v4
@@ -50,7 +143,7 @@ jobs:
           path: dist/*
 
   binaries:
-    needs: test
+    needs: [prepare, test]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -64,6 +157,8 @@ jobs:
             name: windows-x86_64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -94,8 +189,8 @@ jobs:
           path: out/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [dist, binaries]
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, dist, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,9 +201,13 @@ jobs:
           merge-multiple: true
       - name: Prüfsummen
         run: cd artifacts && sha256sum * > SHA256SUMS.txt
-      - name: GitHub Release erstellen
+      - name: Tag setzen und GitHub Release erstellen
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/* \
-            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          # --target legt den Tag vX.Y.Z am geprüften Commit an (existiert er schon, wird er genutzt)
+          gh release create "v$VERSION" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" --target "$SHA" \
+            --title "v$VERSION" --generate-notes

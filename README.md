@@ -8,7 +8,7 @@ The redaction is real: text and image pixels are removed from the PDF, not just 
 pipx install git+https://github.com/colameo/anonywiz.git
 ```
 
-Current version: `2026-10-17.9` (show with `anonywiz --version`)
+Show the version with `anonywiz --version`.
 
 > The tool targets German-language documents. Its messages and reports are in German.
 
@@ -66,7 +66,7 @@ anonywiz file.pdf -t terms.txt
   (Windows: replace `bin/python` with `Scripts\python.exe`)
 - **From a local checkout:** `pipx install .`
 - **Without Python:** download the standalone program for your OS (`anonywiz-linux-x86_64`, `-macos-arm64`, `-windows-x86_64.exe`) from the [Releases](https://github.com/colameo/anonywiz/releases) page. Checksums are in `SHA256SUMS.txt`. Tesseract (OCR) is still a separate install.
-- **Make a release (maintainers):** bump `version` in `pyproject.toml`, then `git tag vX.Y.Z && git push --tags`. The workflow tests, builds the wheel/sdist and the three binaries, and publishes the GitHub release.
+- **Make a release (maintainers):** see [Releases (maintainers)](#releases-maintainers).
 
 What the packages do:
 
@@ -313,7 +313,20 @@ For larger changes (new features, refactorings), open an issue first to agree on
 
 ### Releases (maintainers)
 
-Bump `version` in `pyproject.toml` (and `__version__` in `anonywiz.py`), merge to `master`, then `git tag vX.Y.Z && git push --tags`. The release workflow tests, builds the wheel/sdist and the Linux, macOS and Windows binaries, and publishes the GitHub release.
+Versions are `major.minor.patch` and live in one place, `__version__` in `anonywiz.py` (`pyproject.toml` reads it).
+
+Run **Actions → Release → Run workflow** and choose:
+
+| Input | Effect |
+|---|---|
+| `bump` = `patch` / `minor` / `major` | raise that part of the current version (`0.1.0` → `0.1.1` / `0.2.0` / `1.0.0`) |
+| `bump` = `current` | release the version as it is now in the code (for the very first release) |
+| `version` = `x.y.z` | optional, release exactly this version instead of bumping |
+| `dry_run` | build and test only; no commit, tag or release |
+
+The workflow then commits `Release vX.Y.Z` to the branch, runs the tests on Linux, macOS and Windows, builds the wheel/sdist and the standalone binaries, creates the tag `vX.Y.Z` on the tested commit and publishes the GitHub release with checksums and generated notes. The branch must allow pushes from GitHub Actions.
+
+You can also tag by hand (`git tag vX.Y.Z && git push --tags`); the tag has to match `__version__`.
 
 ---
 

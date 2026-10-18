@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anonywiz"
-version = "2026.10.17.9"
+dynamic = ["version"]
 description = "Steuererklärungen, Lohn- und PK-Ausweise lokal anonymisieren (echte Schwärzung via PyMuPDF)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -24,3 +24,6 @@ py-modules = ["anonywiz"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.setuptools.dynamic]
+version = { attr = "anonywiz.__version__" }
