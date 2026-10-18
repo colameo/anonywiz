@@ -38,10 +38,10 @@ Installation:  pip install pymupdf
 Scans: Bilder ab 25 % der Seitenfläche gelten als Scan. Sie werden NICHT entfernt,
 sondern lokal per OCR gelesen; nur die gefundenen Stellen werden in den Bildpixeln
 überschrieben. Ohne Tesseract bleibt der Scan ungeprüft (Warnung) – oder --remove-scans.
-Verwendung:    python3 anonywizard.py steuererklaerung.pdf -t terms.txt
-               python3 anonywizard.py in.pdf -t terms.txt --keep-dates --pages 3-8
-               python3 anonywizard.py irgendein.pdf -t terms.txt --check
-               python3 anonywizard.py in.pdf --check --json bericht.json
+Verwendung:    anonywiz steuererklaerung.pdf -t terms.txt
+               anonywiz in.pdf -t terms.txt --keep-dates --pages 3-8
+               anonywiz irgendein.pdf -t terms.txt --check
+               anonywiz in.pdf --check --json bericht.json
 
 terms.txt: ein Begriff pro Zeile, # = Kommentar. Namensteile einzeln aufführen,
 da Reihenfolge variiert ("Muster" und "Peter" statt nur "Peter Muster").
@@ -921,7 +921,7 @@ def run_check(doc, terms, args, label):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="anonywizard", description="Steuererklärungen, Lohn- und PK-Ausweise lokal anonymisieren")
+    ap = argparse.ArgumentParser(prog="anonywiz", description="Steuererklärungen, Lohn- und PK-Ausweise lokal anonymisieren")
     ap.add_argument("pdf")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("-t", "--terms", help="Datei mit eigenen Begriffen (Namen, Adresse …)")
@@ -953,7 +953,7 @@ def main():
                     help="erkannte Namen (nach Label / spaCy) nicht automatisch im ganzen Dokument schwärzen")
     args = ap.parse_args()
 
-    print(f"anonywizard {__version__}")
+    print(f"anonywiz {__version__}")
     global BARCODE_PAD
     BARCODE_PAD = args.barcode_pad
     src = Path(args.pdf)

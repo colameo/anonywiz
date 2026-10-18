@@ -8,7 +8,7 @@ from conftest import AHV, EMAIL, IBAN, draw_barcode, make_pdf, page_text
 
 
 def run(monkeypatch, *argv):
-    monkeypatch.setattr("sys.argv", ["anonywizard", *map(str, argv)])
+    monkeypatch.setattr("sys.argv", ["anonywiz", *map(str, argv)])
     monkeypatch.setattr(aw, "BARCODE_PAD", 4)
     aw.main()
 

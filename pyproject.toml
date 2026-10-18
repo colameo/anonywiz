@@ -17,7 +17,6 @@ dev = ["pytest", "pytest-cov"]
 
 [project.scripts]
 anonywiz = "anonywiz:main"
-anonywizard = "anonywiz:main"
 
 [tool.setuptools]
 py-modules = ["anonywiz"]

@@ -8,7 +8,7 @@ The redaction is real: text and image pixels are removed from the PDF, not just 
 pipx install git+https://github.com/colameo/anonywiz.git
 ```
 
-Current version: `2026-10-17.9` (show with `anonywizard --version`)
+Current version: `2026-10-17.9` (show with `anonywiz --version`)
 
 > The tool targets German-language documents. Its messages and reports are in German.
 
@@ -45,11 +45,11 @@ Figures such as salary, assets or deductions stay visible.
 pipx install git+https://github.com/colameo/anonywiz.git
 ```
 
-Done. This provides the commands `anonywizard` and the short alias `anonywiz`:
+Done. This provides the command `anonywiz`:
 
 ```bash
-anonywizard --version
-anonywizard file.pdf -t terms.txt
+anonywiz --version
+anonywiz file.pdf -t terms.txt
 ```
 
 ### Optional extras
@@ -65,6 +65,8 @@ anonywizard file.pdf -t terms.txt
   `$(pipx environment --value PIPX_LOCAL_VENVS)/anonywiz/bin/python -m spacy download de_core_news_md`
   (Windows: replace `bin/python` with `Scripts\python.exe`)
 - **From a local checkout:** `pipx install .`
+- **Without Python:** download the standalone program for your OS (`anonywiz-linux-x86_64`, `-macos-arm64`, `-windows-x86_64.exe`) from the [Releases](https://github.com/colameo/anonywiz/releases) page. Checksums are in `SHA256SUMS.txt`. Tesseract (OCR) is still a separate install.
+- **Make a release (maintainers):** bump `version` in `pyproject.toml`, then `git tag vX.Y.Z && git push --tags`. The workflow tests, builds the wheel/sdist and the three binaries, and publishes the GitHub release.
 
 What the packages do:
 
@@ -109,7 +111,7 @@ Also add numbers the script cannot recognise automatically: register number, ins
 ### 2. Anonymise
 
 ```bash
-anonywizard tax_return.pdf -t terms.txt
+anonywiz tax_return.pdf -t terms.txt
 ```
 
 Output in the same folder:
@@ -130,7 +132,7 @@ Gegenprüfung: OK – nichts Sensibles mehr gefunden
 
 ### 4. Look at the preview
 
-**Always.** Detection is heuristic. Names without a field label that are not in `terms.txt`, as well as handwriting and stamps in scans, can slip through.
+**Always.** Detection is heuristic. Names that have no field label, are not in `terms.txt` and are missed by the optional AI recognition, as well as handwriting and stamps in scans, can slip through.
 
 ---
 
@@ -171,6 +173,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest --cov=anonywiz --cov-report=term-missing
 ```
 
+They also run on every push and pull request (Linux, macOS, Windows) via GitHub Actions.
+
 The tests build small PDFs on the fly (patterns, hidden text, barcodes, scans, metadata, attachments) and cover the helpers, the detection (`--check`) and the full command line (redaction, `--pages`, `--region`, `--inspect`, exit codes). OCR and spaCy are replaced by stubs.
 
 ---
@@ -179,29 +183,29 @@ The tests build small PDFs on the fly (patterns, hidden text, barcodes, scans, m
 
 ```bash
 # Check only, change nothing (original or already redacted file)
-anonywizard file.pdf -t terms.txt --check
+anonywiz file.pdf -t terms.txt --check
 
 # Check report as JSON, values unmasked
-anonywizard file.pdf -t terms.txt --check --json report.json --show-values
+anonywiz file.pdf -t terms.txt --check --json report.json --show-values
 
 # Keep only certain pages
-anonywizard file.pdf -t terms.txt --pages 1-4,9
+anonywiz file.pdf -t terms.txt --pages 1-4,9
 
 # Redact an area by hand (percent of page: x0,y0,x1,y1)
-anonywizard file.pdf -t terms.txt --region "1:60,5,95,12"      # page 1
-anonywizard file.pdf -t terms.txt --region "*:0,0,100,8"       # header on all pages
+anonywiz file.pdf -t terms.txt --region "1:60,5,95,12"      # page 1
+anonywiz file.pdf -t terms.txt --region "*:0,0,100,8"       # header on all pages
 
 # Show positions of images, barcodes and unreadable text
-anonywizard file.pdf --inspect
+anonywiz file.pdf --inspect
 
 # Visualise barcode detection (debug PNGs, nothing is redacted)
-anonywizard file.pdf --debug-barcodes
+anonywiz file.pdf --debug-barcodes
 
 # Redact barcodes with a wider margin
-anonywizard file.pdf -t terms.txt --barcode-pad 10
+anonywiz file.pdf -t terms.txt --barcode-pad 10
 
 # Black out scanned pages completely instead of running OCR
-anonywizard file.pdf -t terms.txt --remove-scans
+anonywiz file.pdf -t terms.txt --remove-scans
 ```
 
 ### All options
@@ -222,6 +226,7 @@ anonywizard file.pdf -t terms.txt --remove-scans
 | `--show-values` | do not mask values in the report |
 | `--json FILE` | also save the check report as JSON |
 | `--no-ner` | turn off AI name recognition |
+| `--no-auto-names` | do not redact automatically detected names (after a label, or via spaCy) throughout the document |
 | `--inspect` | analysis without redaction |
 | `--debug-barcodes` | barcode diagnosis with debug PNGs |
 | `--version` | show version |
@@ -232,7 +237,8 @@ anonywizard file.pdf -t terms.txt --remove-scans
 
 | Problem | Cause and fix |
 |---|---|
-| `unrecognized arguments` | Old version. Check with `--version` and replace `anonywizard.py` with the new file. |
+| `unrecognized arguments` | Old version. Check with `--version` and update with `pipx upgrade anonywiz`. |
+| A common word was blacked out everywhere | It was detected as a name (shown as "Automatisch erkannte Namen" at the start). Run again with `--no-auto-names`, or fix the label in the source. |
 | Whole page black | The page is a scan and Tesseract is missing. Install Tesseract, or use `--remove-scans`. |
 | Text selectable in macOS Preview, script reports "kein auslesbarer Text" (no readable text) | macOS Live Text recognises text in images on screen only. The file is still a scan. |
 | Barcode partly visible | Try `--barcode-pad 10`, otherwise `--debug-barcodes` and `--region`. |
@@ -246,9 +252,68 @@ anonywizard file.pdf -t terms.txt --remove-scans
 ## Limitations
 
 - Detection is heuristic. An automated check does not replace looking at the preview.
+- Automatically detected names are redacted as whole words everywhere, so a wrong detection can black out a common word (see `--no-auto-names`).
 - OCR misses handwriting, stamps and poorly scanned areas.
 - Redact too much rather than too little. Remove pages you don't need with `--pages`.
 - Safer still: type out only the figures you need instead of sharing a PDF.
+
+---
+
+## Contributing
+
+Contributions are welcome: bug reports, new patterns, better detection, documentation, tests.
+
+### Reporting a problem
+
+Open an [issue](https://github.com/colameo/anonywiz/issues) with the command you ran, the output of `anonywiz --version`, your OS and Python version, and what you expected.
+
+> **Never attach real documents or real personal data** (PDFs, screenshots, reports with `--show-values`) to an issue or pull request. Reproduce the problem with a synthetic PDF, or describe the layout and use made-up values.
+
+### Making a change
+
+You cannot push to this repository directly. Changes come in through a fork and a pull request:
+
+1. **Fork** the repository on GitHub (button top right) and clone your fork:
+   ```bash
+   git clone https://github.com/<your-username>/anonywiz.git
+   cd anonywiz
+   git remote add upstream https://github.com/colameo/anonywiz.git
+   ```
+2. **Create a branch** from an up-to-date `master`. One topic per branch:
+   ```bash
+   git fetch upstream && git checkout -b fix-short-description upstream/master
+   ```
+3. **Set up** the development environment (Python 3.10 or newer):
+   ```bash
+   python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+   ```
+4. **Make the change** and add or update tests in `tests/`. Bug fixes should come with a test that fails without the fix.
+5. **Run the tests** and make sure they pass:
+   ```bash
+   .venv/bin/pytest
+   ```
+6. **Commit** with a short, imperative one-line message (for example `Fix crash on older PyMuPDF`), then push the branch to your fork:
+   ```bash
+   git push -u origin fix-short-description
+   ```
+7. **Open a pull request** against `master` of `colameo/anonywiz`. Describe what changed and why, and link the issue if there is one. The CI workflow runs the tests on Linux, macOS and Windows; they must be green before merging.
+8. **Respond to review comments** by pushing more commits to the same branch. The pull request updates automatically.
+
+For larger changes (new features, refactorings), open an issue first to agree on the approach.
+
+### Guidelines
+
+- Keep the style of the surrounding code: naming, comment density, and German user-facing messages.
+- Detection changes need tests with synthetic data and should not weaken what is already caught. Prefer redacting too much over too little.
+- The tool must stay **offline**: no network calls, no telemetry.
+- Do not commit personal data, real documents, `terms.txt` or generated output (`*_anonym.pdf`, `*_preview/`).
+- Keep dependencies minimal; new ones need a good reason.
+- Update this README when behaviour or options change.
+- Contributions are licensed under the project's [MIT License](LICENSE).
+
+### Releases (maintainers)
+
+Bump `version` in `pyproject.toml` (and `__version__` in `anonywiz.py`), merge to `master`, then `git tag vX.Y.Z && git push --tags`. The release workflow tests, builds the wheel/sdist and the Linux, macOS and Windows binaries, and publishes the GitHub release.
 
 ---
 
@@ -263,3 +328,5 @@ This software is provided **"as is"**, without warranty or guarantee of any kind
 ## License
 
 Freely available under the [MIT License](LICENSE): you may use, copy, modify and distribute the code free of charge, including commercially. The license notice must be retained.
+
+Note: the dependency [PyMuPDF](https://pymupdf.readthedocs.io) is licensed under the AGPL-3.0 (or a commercial licence from Artifex). Check this if you redistribute the tool, for example the standalone binaries, in a closed-source product.
