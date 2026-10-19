@@ -8,9 +8,9 @@ The redaction is real: text and image pixels are removed from the PDF, not just 
 pipx install git+https://github.com/colameo/anonywiz.git
 ```
 
-Show the version with `anonywiz --version`.
+Show the version with `anonywiz --version` (or `-v`).
 
-> The tool targets Swiss, German-language documents (the label and address detection looks for German words such as "Ehefrau" or "Bahnhofstrasse"). Its messages and reports are in English.
+> The tool targets Swiss documents in German, English, French and Italian. The label, address and birth date detection looks for words such as "Ehefrau" / "Spouse" / "Épouse" / "Coniuge", "Bahnhofstrasse" / "Rue de la Gare" / "Via Roma" or "Geburtsdatum" / "Date of birth" / "Date de naissance" / "Data di nascita". Its messages and reports are in English.
 
 ---
 
@@ -18,10 +18,10 @@ Show the version with `anonywiz --version`.
 
 | Category | Examples |
 |---|---|
-| Patterns | AHV/AVS social security no. (756.xxxx.xxxx.xx), IBAN CH/LI, company UID (CHE-…), ISIN, e-mail, phone, dates |
-| Addresses | street + house number, postcode + town |
+| Patterns | AHV/AVS social security no. (756.xxxx.xxxx.xx), IBAN CH/LI, company UID (CHE-…), ISIN, e-mail, phone, dates (whole, or day/month only with `--date-mode year`) |
+| Addresses | street + house number (`Bahnhofstrasse 12`, `Rue de la Gare 12`, `Via Roma 5`, `12 High Street`), postcode + town |
 | Your own terms | everything in `terms.txt` (names, company, employer, bank …) |
-| Names found automatically | names after a label ("Ehefrau: Anna Beispiel") and, with spaCy, person names; each name part is then redacted as a whole word everywhere in the document (`--no-auto-names` to disable) |
+| Names found automatically | names after a label ("Ehefrau: Anna Beispiel", "Prénom: Élodie Dupont", "Cognome: Rossi", "Surname Muster") and, with spaCy, person names; each name part is then redacted as a whole word everywhere in the document (`--no-auto-names` to disable) |
 | Barcodes | as images, as vector graphics (1D, PDF417, QR) and in barcode fonts, including the human-readable number below |
 | Scans | text recognition (OCR) on the image itself, only the matches are painted over |
 | Hidden content | white text, micro text, text under black bars (fake redaction) |
@@ -119,6 +119,8 @@ Output in the same folder:
 - `tax_return_anonymized.pdf`: the redacted file
 - `tax_return_anonymized_preview/`: one PNG per page for review
 
+Dates are redacted completely by default. To keep the year visible (`31.12.2023` becomes `▮▮▮▮▮▮2023`, also for birth dates) add `--date-mode year`; to keep dates add `--date-mode none` (birth dates after a label stay redacted).
+
 ### 3. Read the report
 
 The re-check is printed at the end:
@@ -169,13 +171,13 @@ anonywiz wins on PDF handling and Swiss data; Presidio wins on general detection
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest                      # 100+ tests, ~1 s, no Tesseract needed
+.venv/bin/pytest                      # 160+ tests, ~1 s, no Tesseract needed
 .venv/bin/pytest --cov=anonywiz --cov-report=term-missing
 ```
 
 They also run on every push and pull request (Linux, macOS, Windows) via GitHub Actions.
 
-The tests build small PDFs on the fly (patterns, hidden text, barcodes, scans, metadata, attachments) and cover the helpers, the detection (`--check`) and the full command line (redaction, `--pages`, `--region`, `--inspect`, exit codes). OCR and spaCy are replaced by stubs.
+The tests build small PDFs on the fly (patterns, dates, hidden text, barcodes, scans, metadata, attachments) and cover the helpers (including the German, English, French and Italian vocabulary), the detection (`--check`) and the full command line (redaction, `--date-mode`, `--pages`, `--region`, `--inspect`, exit codes). OCR and spaCy are replaced by stubs.
 
 ---
 
@@ -206,6 +208,9 @@ anonywiz file.pdf -t terms.txt --barcode-pad 10
 
 # Black out scanned pages completely instead of running OCR
 anonywiz file.pdf -t terms.txt --remove-scans
+
+# Redact day and month of dates, keep the year (also for birth dates)
+anonywiz file.pdf -t terms.txt --date-mode year
 ```
 
 ### All options
@@ -216,7 +221,8 @@ anonywiz file.pdf -t terms.txt --remove-scans
 | `-o, --out FILE` | output file name (default: `<name>_anonymized.pdf`) |
 | `--pages 1,3-6` | keep only these pages |
 | `--region S:x0,y0,x1,y1` | redact an area by hand, can be repeated |
-| `--keep-dates` | do not redact dates |
+| `--date-mode full\|year\|none` | `full` redacts whole dates (default), `year` redacts day and month but keeps the year, `none` keeps dates. In `full` and `none` mode birth dates (after a label such as `geb.`, `Geburtsdatum`, `born`, `date of birth`, `né le`, `date de naissance`, `nato il`, `data di nascita`) are always redacted completely; `year` applies to them too |
+| `--keep-dates` | same as `--date-mode none` |
 | `--keep-images` | do not remove images and barcodes |
 | `--remove-scans` | black out scans completely instead of OCR |
 | `--redact-unreadable` | also redact text without a Unicode mapping |
@@ -229,7 +235,7 @@ anonywiz file.pdf -t terms.txt --remove-scans
 | `--no-auto-names` | do not redact automatically detected names (after a label, or via spaCy) throughout the document |
 | `--inspect` | analysis without redaction |
 | `--debug-barcodes` | barcode diagnosis with debug PNGs |
-| `--version` | show version |
+| `-v, --version` | show version |
 
 ---
 
@@ -241,6 +247,9 @@ anonywiz file.pdf -t terms.txt --remove-scans
 | A common word was blacked out everywhere | It was detected as a name (shown as "Automatically detected names" at the start). Run again with `--no-auto-names`, or fix the label in the source. |
 | Whole page black | The page is a scan and Tesseract is missing. Install Tesseract, or use `--remove-scans`. |
 | Text selectable in macOS Preview, script reports "no readable text" | macOS Live Text recognises text in images on screen only. The file is still a scan. |
+| Year of a date is blacked out although `--date-mode year` was used | Old version (before the barcode fix): redaction boxes of a date column were mistaken for a barcode. Update with `pipx upgrade anonywiz` or reinstall from the repository. If it still happens, see the open issues about birth dates and the fallback to whole dates. |
+| Birth date still visible with `--date-mode year` or `none` | The date has no birth label right before it (table header, or no label). See open issues. Use `--date-mode full` or `--region`. |
+| A header such as `Nome Cognome` or `First name` was blacked out | It was taken for a person's name. Label words of all four languages are on the stop word list; if another word slips through, run with `--no-auto-names` or add it to `STOPWORDS`. |
 | Barcode partly visible | Try `--barcode-pad 10`, otherwise `--debug-barcodes` and `--region`. |
 | "Possible barcode remnant" on the canton's coat of arms | False alarm (wave lines in the logo). |
 | `error: externally-managed-environment` from pip | Install with pipx as described in the installation section. |
@@ -249,13 +258,36 @@ anonywiz file.pdf -t terms.txt --remove-scans
 
 ---
 
-## Limitations
+## Known limitations and open issues
+
+### Limitations
 
 - Detection is heuristic. An automated check does not replace looking at the preview.
 - Automatically detected names are redacted as whole words everywhere, so a wrong detection can black out a common word (see `--no-auto-names`).
 - OCR misses handwriting, stamps and poorly scanned areas.
+- The detection vocabulary (label words, street words, birth date labels, stop words) covers German, English, French and Italian. Other languages are covered only by the language-independent patterns (AHV, IBAN, UID, ISIN, e-mail, phone, card numbers, dates).
+- Dates are only recognised as `dd.mm.yyyy` (1 or 2 digit day and month, year 19xx or 20xx).
 - Redact too much rather than too little. Remove pages you don't need with `--pages`.
 - Safer still: type out only the figures you need instead of sharing a PDF.
+
+### Open issues
+
+Known problems that are not solved yet. Pull requests are welcome (see [Contributing](#contributing)).
+
+- [ ] **Birth dates are only recognised by a label right before the date** (`geb.`, `Geburtsdatum`, `date of birth`, `date de naissance`, `data di nascita` and so on, within 30 characters). Two cases are missed:
+  - a table where `Geburtsdatum` is a column header and the dates are in the rows below,
+  - a date without any label, for example after the AHV number (`756.… - 24.06.1965`).
+
+  Such dates count as ordinary dates. With `--date-mode full` (default) they are still redacted. With `--date-mode year` the year stays visible, and with `--date-mode none` the whole date stays visible, so the birth date remains in the output.
+- [ ] **`--date-mode year` falls back to redacting the whole date** if the day/month part cannot be located exactly (for example a date wrapped across two lines).
+- [ ] **`--date-mode none` with a birth label:** if the same date text appears once with and once without a birth label, all occurrences are redacted.
+- [ ] **Language coverage is a word list, not a model.** Label words for other Swiss or neighbouring languages (Romansh, Portuguese, Spanish …) are not included, and generic words after a label can still be taken for a name (`--no-auto-names`). Add words to `LABEL_RX`, `STREET_RX`, `BIRTH_CTX` and `STOPWORDS` in `anonywiz.py`, with a test.
+- [ ] **Other date formats are not detected** (`1.3.80`, `12. März 1980`, `1980-03-12`, `12/03/1980`).
+- [ ] **Vector barcode detection is a heuristic.** It can mark logos or coats of arms as "Possible barcode remnant", and a barcode drawn in an unusual way may be missed. Check the preview of every page. Redaction boxes queued by the script itself are ignored since this version; before that, a column of dates could be mistaken for a barcode and blacked out completely.
+- [ ] **Noisy `--check` report.** Typical false alarms are `Raw data: Email` (random bytes inside embedded fonts that look like an e-mail address), `Unreadable text` (fonts without a Unicode mapping) and `Possible barcode remnant` on logos. A re-check of a correctly redacted file can therefore report HIGH/MEDIUM findings. Look at what was found before assuming something leaked.
+- [ ] **Unreadable text is not redacted by default** (fonts without a Unicode mapping cannot be searched). Use `--inspect` and `--redact-unreadable` or `--region`.
+- [ ] **Names without a label** are only found with the optional spaCy model, or by listing them in `terms.txt`.
+- [ ] **No automatic end-to-end test on real documents.** The tests use synthetic PDFs. Layouts that behave differently (tables, tightly stacked rows, unusual fonts) are only found by looking at the output.
 
 ---
 
@@ -303,7 +335,7 @@ For larger changes (new features, refactorings), open an issue first to agree on
 
 ### Guidelines
 
-- Keep the style of the surrounding code: naming, comment density, and English user-facing messages and comments (only the detection vocabulary, such as street suffixes and label words, is German).
+- Keep the style of the surrounding code: naming, comment density, and English user-facing messages and comments (only the detection vocabulary, such as street words and label words, is German, English, French and Italian).
 - Detection changes need tests with synthetic data and should not weaken what is already caught. Prefer redacting too much over too little.
 - The tool must stay **offline**: no network calls, no telemetry.
 - Do not commit personal data, real documents, `terms.txt` or generated output (`*_anonymized.pdf`, `*_preview/`).

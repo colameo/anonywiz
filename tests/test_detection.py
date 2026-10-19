@@ -406,3 +406,19 @@ def test_find_name_hits_whole_words_only(tmp_path):
         hits = aw.find_name_hits(doc[0], ["Anna", "Müller"])
         assert aw.find_name_hits(doc[0], []) == []
     assert len(hits) == 3          # "Anna", "Anna.", "Meier-Müller," - not "Annahme"
+
+
+def test_date_rects_modes(sample_pdf):
+    with fitz.open(sample_pdf) as doc:
+        page = doc[0]
+        text = page.get_text("text")
+        full = aw.date_rects(page, text, mode="full")
+        year = aw.date_rects(page, text, mode="year")
+        none = aw.date_rects(page, text, mode="none")
+        dob = page.search_for("01.02.1980")[0]
+        stichtag = page.search_for("31.12.2023")[0]
+    assert len(full) == len(year) == 2 and len(none) == 1
+    assert any(r.x0 == dob.x0 and r.x1 < dob.x1 for r in year)  # birth date shortened too
+    assert dob in none and dob not in year                # birth date: complete only unless year mode
+    assert not any(r == stichtag for r in year)           # other date shortened ...
+    assert any(r.x0 == stichtag.x0 and r.x1 < stichtag.x1 for r in year)  # ... to day/month

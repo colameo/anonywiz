@@ -179,3 +179,63 @@ def test_item_rect():
     p, q = fitz.Point(0, 0), fitz.Point(10, 0)
     assert aw._item_rect(("l", p, q), 2) == fitz.Rect(-1, -1, 11, 1)
     assert aw._item_rect(("x",), 0) is None
+
+
+# --- multilingual vocabulary (German, English, French, Italian) -----------------------------
+
+@pytest.mark.parametrize("text", [
+    "geboren 01.02.1980", "Born: ", "Date of birth ", "DOB ", "Birthdate ", "Birth ",
+    "né le ", "Née le ", "Date de naissance ", "nato il ", "nata il ", "Data di nascita ",
+])
+def test_birth_ctx_languages(text):
+    assert aw.BIRTH_CTX.search(text), text
+
+
+@pytest.mark.parametrize("text", ["Gültig ab ", "Valid from ", "ne pas ", "Ausgabe "])
+def test_birth_ctx_no_false_positive(text):
+    assert not aw.BIRTH_CTX.search(text), text
+
+
+@pytest.mark.parametrize("text,words", [
+    ("First name: Anna Beispiel", ["Anna", "Beispiel"]),
+    ("Surname Muster", ["Muster"]),
+    ("Mr. John Smith", ["John", "Smith"]),
+    ("Account holder: Anna Beispiel", ["Anna", "Beispiel"]),
+    ("Prénom: Élodie Dupont", ["Élodie", "Dupont"]),
+    ("Nom de famille Müller", ["Müller"]),
+    ("Épouse: Marie Curie", ["Marie", "Curie"]),
+    ("Contribuable: Jean Dupont", ["Jean", "Dupont"]),
+    ("Cognome: Rossi", ["Rossi"]),
+    ("Signora Maria Bianchi", ["Maria", "Bianchi"]),
+    ("Datore di lavoro: Ditta Verdi", ["Ditta", "Verdi"]),
+    ("Intestatario: Àlvaro Neri", ["Àlvaro", "Neri"]),
+])
+def test_label_names_languages(text, words):
+    assert list(aw.label_names(text)) == [words]
+
+
+@pytest.mark.parametrize("text", [
+    "Nome Cognome", "Nom Prénom", "First name Last name", "Name: Total", "Montant total",
+])
+def test_label_names_headers_not_names(text):
+    assert list(aw.label_names(text)) == []
+
+
+@pytest.mark.parametrize("street", [
+    "Rue de la Gare 12", "Avenue des Alpes 5b", "Chemin du Lac 3", "Route de Genève 100",
+    "Via Roma 5", "Viale Stazione 12", "Piazza Grande 1", "12 High Street",
+    "221b Baker Street",
+])
+def test_street_languages(street):
+    assert aw.STREET_RX.search(street), street
+
+
+@pytest.mark.parametrize("text", ["Rue de la Gare", "Via Roma", "Corso di formazione 2023", "Place of birth"])
+def test_street_no_false_positive(text):
+    assert not aw.STREET_RX.search(text), text
+
+
+def test_plz_accents():
+    assert aw.PLZ_RX.search("1204 Genève")
+    assert aw.PLZ_RX.search("6900 Lugano")
+    assert aw.PLZ_RX.search("2000 Neuchâtel")

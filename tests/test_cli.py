@@ -28,8 +28,9 @@ def terms_file(tmp_path):
 
 # --- arguments / error cases ------------------------------------------------------------
 
-def test_version(monkeypatch, capsys):
-    assert exit_code(monkeypatch, "--version") == 0
+@pytest.mark.parametrize("flag", ["-v", "--version"])
+def test_version(monkeypatch, capsys, flag):
+    assert exit_code(monkeypatch, flag) == 0
     assert aw.__version__ in capsys.readouterr().out
 
 
@@ -360,3 +361,36 @@ def test_no_auto_names(monkeypatch, tmp_path):
     out = tmp_path / "o.pdf"
     run(monkeypatch, src, "-o", out, "--no-ner", "--no-preview", "--no-auto-names")
     assert "Beispiel und Anna wohnen hier." in page_text(out)
+
+
+def test_date_mode_year(monkeypatch, sample_pdf, tmp_path):
+    out = tmp_path / "o.pdf"
+    run(monkeypatch, sample_pdf, "-o", out, "--no-ner", "--date-mode", "year")
+    text = page_text(out)
+    assert "31.12." not in text and "2023" in text   # day/month gone, year kept
+    assert "01.02" not in text and "1980" in text      # birth date: year kept as well
+    assert AHV not in text
+
+
+def test_keep_dates_still_redacts_birth_date(monkeypatch, sample_pdf, tmp_path):
+    out = tmp_path / "o.pdf"
+    run(monkeypatch, sample_pdf, "-o", out, "--no-ner", "--keep-dates")
+    text = page_text(out)
+    assert "31.12.2023" in text and "1980" not in text
+
+
+def test_date_column_not_mistaken_for_barcode(monkeypatch, tmp_path):
+    # tightly stacked dates: their queued redaction boxes must not be detected as a barcode
+    # (that would black out the whole column, including the years kept by --date-mode year)
+    src = tmp_path / "in.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    for i in range(8):
+        page.insert_text((278, 300 + 14 * i), f"24.06.{1960 + i}", fontsize=11)
+    doc.save(src)
+    doc.close()
+    out = tmp_path / "o.pdf"
+    run(monkeypatch, src, "-o", out, "--no-ner", "--no-preview", "--date-mode", "year")
+    text = page_text(out)
+    assert "24.06." not in text
+    assert all(str(1960 + i) in text for i in range(8))

@@ -7,7 +7,8 @@ the PDF, not just covered).
 
 Removes:
   - patterns: AHV no. (756.xxxx.xxxx.xx), IBAN CH/LI, ISIN/Valor, UID (CHE-...),
-              email, Swiss phone numbers, dates (can be switched off),
+              email, Swiss phone numbers, dates (--date-mode: full, year only, or off;
+              birth dates too with year; with off only birth dates are redacted),
               street + house number, postcode + town
   - hidden text (white, micro text, under black bars)
   - your own terms from terms.txt (names, street, town, employer, bank ...)
@@ -21,7 +22,8 @@ Afterwards: automatic re-check of the output + PNG preview of every page.
 Check mode (--check) - changes nothing, looks for:
   - AHV no. (with check digit), IBAN (with checksum), UID, email, phone, ISIN,
     card numbers (Luhn), dates of birth (context), street + no., postcode + town,
-    names after labels ("Name:", "Ehefrau", "Arbeitgeber" ...), terms from terms.txt
+    names after labels ("Name:", "Ehefrau", "Spouse", "Prénom", "Cognome" ...; German,
+    English, French, Italian), terms from terms.txt
   - optional AI name recognition (spaCy, local)
   - fake redaction (text under black bars still readable), white text,
     micro text, text outside the page, unreadable text
@@ -39,14 +41,14 @@ but read locally via OCR; only the matches are painted over in the image pixels.
 Without Tesseract the scan stays unchecked (warning) - or use --remove-scans.
 
 Usage:         anonywiz tax_return.pdf -t terms.txt
-               anonywiz in.pdf -t terms.txt --keep-dates --pages 3-8
+               anonywiz in.pdf -t terms.txt --date-mode year --pages 3-8
                anonywiz any.pdf -t terms.txt --check
                anonywiz in.pdf --check --json report.json
 
 terms.txt: one term per line, # = comment. List name parts separately, because
 their order varies ("Muster" and "Peter" instead of just "Peter Muster").
 """
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import argparse
 import re
@@ -96,9 +98,30 @@ def parse_pages(spec, n):
     return sorted(p for p in out if 0 <= p < n)
 
 
-def find_hits(page, patterns, terms, tp=None):
+def date_rects(page, text, tp=None, mode="full"):
+    """Rects to redact for dates on the page. mode: full = whole date, year = day and
+    month only (year stays visible, also for birth dates), none = no dates except birth
+    dates (next to a birth label, BIRTH_CTX), which are then redacted completely."""
+    birth, other = set(), set()
+    for mo in re.finditer(PATTERNS["Date"], text):
+        ctx = text[max(0, mo.start() - 30):mo.start()]
+        (birth if BIRTH_CTX.search(ctx) else other).add(mo.group())
+    rects = []
+    for d in sorted(birth | other):
+        for r in page.search_for(d, textpage=tp):
+            if mode == "year":
+                # day and month only; whole date if the prefix cannot be located exactly
+                pre = page.search_for(d[:-4], clip=r, textpage=tp)
+                rects.append(pre[0] if len(pre) == 1 else r)
+            elif mode == "full" or d in birth:
+                rects.append(r)
+    return rects
+
+
+def find_hits(page, patterns, terms, tp=None, date_mode="full"):
     """Returns {category: [Rects]} for all matches on the page.
-    tp = optional OCR text layer (for scanned pages)."""
+    tp = optional OCR text layer (for scanned pages).
+    date_mode: see date_rects (only used if patterns contains "Date")."""
     hits = {}
     text = page.get_text("text", textpage=tp)
 
@@ -106,10 +129,12 @@ def find_hits(page, patterns, terms, tp=None):
         return page.search_for(t, textpage=tp)
 
     for name, rx in patterns.items():
-        for m in set(re.findall(rx, text)):
-            rects = sf(m)
-            if rects:
-                hits.setdefault(name, []).extend(rects)
+        if name == "Date":
+            rects = date_rects(page, text, tp, date_mode)
+        else:
+            rects = [r for m in set(re.findall(rx, text)) for r in sf(m)]
+        if rects:
+            hits.setdefault(name, []).extend(rects)
     for mo in STREET_RX.finditer(text):
         hits.setdefault("Street/No.", []).extend(sf(mo.group()))
     for mo in PLZ_RX.finditer(text):
@@ -544,28 +569,79 @@ def inspect(doc):
 # ---------------------------------------------------------------------------
 SEV_ORDER = {"HIGH": 0, "MEDIUM": 1, "INFO": 2}
 
-# German words that look like names/places but are not (the tool targets German-language
-# documents, so the detection vocabulary below is intentionally German)
+# Words that look like names/places but are not. The detection vocabulary below covers
+# German, English, French and Italian (Swiss documents come in all of them).
 STOPWORDS = {
+    # German
     "abzug", "abzüge", "total", "betrag", "chf", "einkommen", "vermögen", "kanton",
     "gemeinde", "steuer", "steuern", "steuerjahr", "angaben", "seite", "beilage",
     "formular", "ja", "nein", "und", "oder", "der", "die", "das", "von", "für",
     "aargau", "schweiz", "bund", "staat", "total", "übertrag", "lohnausweis",
     "wertschriften", "verzeichnis", "schulden", "zinsen", "kinder", "kind",
     "betreuung", "beruf", "berufsauslagen", "versicherung", "unterhalt",
+    # English
+    "amount", "income", "assets", "canton", "municipality", "tax", "taxes", "page",
+    "form", "yes", "no", "and", "or", "the", "of", "for", "from", "switzerland",
+    "federal", "state", "debts", "interest", "children", "child", "insurance",
+    "name", "first", "last", "given", "family", "full", "surname", "spouse",
+    "husband", "wife", "employer", "taxpayer", "representative", "holder",
+    # French
+    "montant", "impôt", "impôts", "revenu", "fortune", "commune", "oui", "non", "et",
+    "ou", "le", "la", "les", "de", "du", "des", "pour", "suisse", "confédération",
+    "dettes", "intérêts", "enfants", "enfant", "assurance", "nom", "prénom",
+    "famille", "époux", "épouse", "conjoint", "conjointe", "employeur", "contribuable",
+    "titulaire", "représentant", "représentante", "assuré", "assurée", "monsieur",
+    "madame", "mme",
+    # Italian
+    "totale", "importo", "imposta", "imposte", "reddito", "patrimonio", "cantone",
+    "comune", "pagina", "sì", "e", "o", "il", "lo", "di", "per", "del", "svizzera",
+    "confederazione", "debiti", "interessi", "figli", "figlio", "figlia", "assicurazione",
+    "nome", "cognome", "coniuge", "marito", "moglie", "datore", "lavoro", "titolare",
+    "intestatario", "intestataria", "rappresentante", "contribuente", "assicurato",
+    "assicurata", "signor", "signora",
 }
 
+# letters incl. accents (German umlauts, French and Italian accents)
+_UP = "A-ZÀ-ÖØ-Þ"
+_LO = "a-zß-öø-ÿ"
+
+# label words that are followed by a person's name (German, English, French, Italian)
 LABEL_RX = re.compile(
-    r"(?i:\b(?:name|vorname|nachname|ehemann|ehefrau|ehepartner(?:in)?|partner(?:in)?|"
+    r"(?i:\b(?:"
+    # German
+    r"name|vorname|nachname|ehemann|ehefrau|ehepartner(?:in)?|partner(?:in)?|"
     r"steuerpflichtige[r]?|kind|arbeitgeber(?:in)?|herr|frau|vertreter(?:in)?|"
-    r"kontoinhaber(?:in)?|inhaber(?:in)?)\b)[ \t]*[:,]?[ \t]+"
-    r"((?:[A-ZÄÖÜ][a-zäöüéèàç'-]+[ ,]*){1,3})")
+    r"kontoinhaber(?:in)?|inhaber(?:in)?|"
+    # English
+    r"first[ \t]+name|given[ \t]+name|last[ \t]+name|family[ \t]+name|full[ \t]+name|"
+    r"surname|spouse|husband|wife|employer|mr|mrs|ms|miss|taxpayer|"
+    r"account[ \t]+holder|policy[ \t]?holder|representative|"
+    # French
+    r"nom[ \t]+de[ \t]+famille|pr[ée]nom|nom|[ée]poux|[ée]pouse|conjointe?|"
+    r"employeur|employeuse|monsieur|madame|mme|titulaire(?:[ \t]+du[ \t]+compte)?|"
+    r"contribuable|repr[ée]sentante?|assur[ée]e?|"
+    # Italian
+    r"nome|cognome|coniuge|marito|moglie|datore[ \t]+di[ \t]+lavoro|signora?|"
+    r"titolare|intestatari[oa]|rappresentante|contribuente|assicurat[oa]"
+    r")\b)\.?[ \t]*[:,]?[ \t]+"
+    r"((?:[" + _UP + r"][" + _LO + r"'’-]+[ ,]*){1,3})")
+# street: house number after the name (strasse 12), or street word before the name
+# (Rue de la Gare 12, Via Roma 5), or English style (12 High Street)
 STREET_RX = re.compile(
-    r"\b[A-ZÄÖÜ][\wäöüéè.-]*(?:strasse|str\.|weg|gasse|platz|allee|rain|ring|halde|"
-    r"matte?|acker|steig|graben|quai|stutz)\s+\d{1,4}[a-zA-Z]?\b")
-PLZ_RX = re.compile(r"\b(?:CH-)?([1-9]\d{3})\s+([A-ZÄÖÜ][a-zäöüéèà]+(?:[ -][A-ZÄÖÜ]?[a-zäöüéèà]+)?)")
+    r"\b[" + _UP + r"][\w.-]*(?:strasse|str\.|weg|gasse|platz|allee|rain|ring|halde|"
+    r"matte?|acker|steig|graben|quai|stutz)\s+\d{1,4}[a-zA-Z]?\b|"
+    r"\b(?:Rue|Avenue|Av\.|Chemin|Route|Boulevard|Impasse|Passage|Place|"
+    r"Via|Viale|Piazza|Piazzale|Corso|Strada|Vicolo|Largo)\s+[^\n\d]{1,40}?,?\s+\d{1,3}[a-zA-Z]?\b|"
+    r"\b\d{1,4}[a-zA-Z]?\s+[" + _UP + r"][\w'-]*(?:\s+[" + _UP + r"][\w'-]*){0,2}\s+"
+    r"(?:Street|Road|Avenue|Lane|Drive|Square|Way)\b")
+PLZ_RX = re.compile(r"\b(?:CH-)?([1-9]\d{3})\s+([" + _UP + r"][" + _LO + r"]+"
+                    r"(?:[ -][" + _UP + r"]?[" + _LO + r"]+)?)")
 CARD_RX = re.compile(r"\b(?:\d[ -]?){13,19}\b")
-BIRTH_CTX = re.compile(r"(?i)(geb\.|geboren|geburtsdatum|geb\.-?dat)")
+# label before a date of birth (German, English, French, Italian)
+BIRTH_CTX = re.compile(
+    r"(?i)(geb\.|geboren|geburtsdatum|geb\.-?dat|"
+    r"\bborn\b|\bbirth\b|birth[ \t-]?date|birthday|\bd\.?o\.?b\b|"
+    r"\bnée?\b|naissance|\bnat[oa]\b|nascita)")
 
 
 def _iban_ok(s):
@@ -925,11 +1001,15 @@ def run_check(doc, terms, args, label):
 def main():
     ap = argparse.ArgumentParser(prog="anonywiz", description="Anonymise tax returns, salary and pension fund statements locally")
     ap.add_argument("pdf")
-    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    ap.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("-t", "--terms", help="file with your own terms (names, address ...)")
     ap.add_argument("-o", "--out", help="output PDF (default: <name>_anonymized.pdf)")
     ap.add_argument("--pages", help="keep only these pages, e.g. 1,3-6")
-    ap.add_argument("--keep-dates", action="store_true", help="do not redact dates")
+    ap.add_argument("--date-mode", choices=("full", "year", "none"), default="full",
+                    help="full = redact whole dates (default), year = redact day and month "
+                         "but keep the year (also for birth dates), none = keep dates except "
+                         "birth dates, which are redacted completely.")
+    ap.add_argument("--keep-dates", action="store_true", help="same as --date-mode none")
     ap.add_argument("--remove-scans", action="store_true",
                     help="black out scanned pages completely instead of checking via OCR")
     ap.add_argument("--keep-images", action="store_true", help="do not remove images and barcodes (also vector barcodes)")
@@ -955,13 +1035,17 @@ def main():
                     help="do not automatically redact detected names (after label / spaCy) throughout the document")
     args = ap.parse_args()
 
+    if args.keep_dates:
+        args.date_mode = "none"
+    args.keep_dates = args.date_mode == "none"
+
     print(f"anonywiz {__version__}")
     global BARCODE_PAD
     BARCODE_PAD = args.barcode_pad
     src = Path(args.pdf)
     out = Path(args.out) if args.out else src.with_name(src.stem + "_anonymized.pdf")
     terms = load_terms(args.terms)
-    patterns = {k: v for k, v in PATTERNS.items() if not (k == "Date" and args.keep_dates)}
+    patterns = PATTERNS
 
     src = src.expanduser()
     if not src.is_file():
@@ -1033,14 +1117,19 @@ def main():
             else:
                 stats["Scan checked via OCR"] = stats.get("Scan checked via OCR", 0) + 1
 
-        for name, rects in find_hits(page, patterns, terms, tp).items():
+        # drawing-based detectors first: queued redaction boxes are black rectangles
+        # on the page and would otherwise be mistaken for barcodes / black bars
+        vec_barcodes = [] if args.keep_images else barcode_boxes(page)
+        hid = hidden_text(page)
+
+        for name, rects in find_hits(page, patterns, terms, tp, args.date_mode).items():
             for r in rects:
                 add(page, r, name + (" (Scan)" if tp is not None else ""))
 
         if not args.keep_images:
             for r in small_imgs:
                 add(page, r, "Image/Barcode")
-            for r in barcode_boxes(page):
+            for r in vec_barcodes:
                 add(page, r, "Vector barcode")
             for sr in scans:
                 if args.remove_scans:
@@ -1057,7 +1146,6 @@ def main():
         for r in find_name_hits(page, auto_names, tp):
             add(page, r, "Name (automatic)")
 
-        hid = hidden_text(page)
         n_spans = sum(1 for b in page.get_text("dict")["blocks"] for l in b.get("lines", [])
                       for sp in l["spans"] if sp["text"].strip())
         if hid and n_spans and len(hid) > 0.3 * n_spans:
