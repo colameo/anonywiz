@@ -48,7 +48,7 @@ Usage:         anonywiz tax_return.pdf -t terms.txt
 terms.txt: one term per line, # = comment. List name parts separately, because
 their order varies ("Muster" and "Peter" instead of just "Peter Muster").
 """
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import argparse
 import re
