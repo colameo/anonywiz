@@ -167,7 +167,8 @@ jobs:
         shell: bash
         run: |
           pyinstaller --onefile --noconfirm --name anonywiz \
-            --collect-submodules zxingcpp --collect-binaries zxingcpp anonywiz.py
+            --collect-submodules zxingcpp --collect-binaries zxingcpp \
+            --collect-all pymupdf anonywiz.py
       - name: Smoke-Test
         shell: bash
         run: |
