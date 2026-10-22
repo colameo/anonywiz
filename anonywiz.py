@@ -44,6 +44,8 @@ Usage:         anonywiz tax_return.pdf -t terms.txt
                anonywiz in.pdf -t terms.txt --date-mode year --pages 3-8
                anonywiz any.pdf -t terms.txt --check
                anonywiz in.pdf --check --json report.json
+               anonywiz notes.txt -t terms.txt     (text files: .txt, .md, .csv ...
+                                                    -> notes_anonymized.txt, hits become [REDACTED])
 
 terms.txt: one term per line, # = comment. List name parts separately, because
 their order varies ("Muster" and "Peter" instead of just "Peter Muster").
@@ -758,10 +760,15 @@ def label_names(text):
 def detect_names(doc, use_ner=True, min_len=3):
     """Find name parts in the whole document (label heuristic + optional spaCy).
     Each part is then redacted everywhere as a whole word, even without a label."""
+    texts = (page.get_text("text") for page in doc)
+    return detect_names_in_texts(texts, use_ner, min_len)
+
+
+def detect_names_in_texts(texts, use_ner=True, min_len=3):
+    """Same as detect_names, for an iterable of plain strings."""
     nlp = _load_ner() if use_ner else None
     names = set()
-    for page in doc:
-        text = page.get_text("text")
+    for text in texts:
         for words in label_names(text):
             names.update(words)
         if nlp is not None:
@@ -784,6 +791,90 @@ def find_name_hits(page, names, tp=None):
         if token in wanted or any(p in wanted for p in re.split(r"[-']", token)):
             out.append(fitz.Rect(w[:4]))
     return out
+
+
+TEXT_PLACEHOLDER = "[REDACTED]"
+
+
+def redact_text(text, terms, names=(), date_mode="full", placeholder=TEXT_PLACEHOLDER):
+    """Anonymises plain text. Returns (new_text, {category: count}).
+    Same detectors as for PDFs: patterns, street, postcode + town, terms, names."""
+    spans = []   # (start, end, category, replacement)
+
+    for name, rx in PATTERNS.items():
+        for mo in re.finditer(rx, text):
+            if name != "Date":
+                spans.append((mo.start(), mo.end(), name, placeholder))
+                continue
+            birth = bool(BIRTH_CTX.search(text[max(0, mo.start() - 30):mo.start()]))
+            if date_mode == "full" or (date_mode == "none" and birth):
+                spans.append((mo.start(), mo.end(), name, placeholder))
+            elif date_mode == "year":
+                # day and month only, the year stays readable
+                spans.append((mo.start(), mo.end() - 4, name, "XX.XX."))
+    for mo in STREET_RX.finditer(text):
+        spans.append((mo.start(), mo.end(), "Street/No.", placeholder))
+    for mo in PLZ_RX.finditer(text):
+        if not (1900 <= int(mo.group(1)) <= 2099 or mo.group(2).lower() in STOPWORDS):
+            spans.append((mo.start(), mo.end(), "Postcode/Town", placeholder))
+    for t in terms:
+        for mo in re.finditer(re.escape(t), text, re.IGNORECASE):
+            spans.append((mo.start(), mo.end(), "Term", placeholder))
+    if names:
+        rx = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(n) for n in names) + r")(?!\w)",
+                        re.IGNORECASE)
+        for mo in rx.finditer(text):
+            spans.append((mo.start(), mo.end(), "Name (automatic)", placeholder))
+
+    # longest match wins on overlaps
+    spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
+    stats, out, pos = {}, [], 0
+    for start, end, cat, repl in spans:
+        if start < pos:
+            continue
+        out.append(text[pos:start])
+        out.append(repl)
+        stats[cat] = stats.get(cat, 0) + 1
+        pos = end
+    out.append(text[pos:])
+    return "".join(out), stats
+
+
+def read_text_file(path):
+    """Returns the text of a text file, or None if it is binary / not decodable."""
+    data = path.read_bytes()
+    if b"\0" in data[:4096]:
+        return None
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
+def anonymize_text_file(src, text, terms, args):
+    out = Path(args.out) if args.out else src.with_name(src.stem + "_anonymized" + src.suffix)
+    names = [] if args.no_auto_names else detect_names_in_texts([text], use_ner=not args.no_ner)
+    if names:
+        print(f"Automatically detected names ({len(names)}): "
+              f"{', '.join(_mask(n, False) for n in names)} - redacted everywhere "
+              "(disable: --no-auto-names)")
+    new, stats = redact_text(text, terms, names, args.date_mode)
+    if args.check:
+        print(f"\n=== Check: {src.name} ===")
+        for k, v in stats.items():
+            print(f"  {k}: {v}")
+        print("  nothing sensitive found" if not stats else "")
+        sys.exit(2 if stats else 0)
+    out.write_text(new, encoding="utf-8")
+    again = redact_text(new.replace(TEXT_PLACEHOLDER, ""), terms, names, args.date_mode)[1]
+    print(f"\nSaved:       {out}")
+    print("Redacted:   ", ", ".join(f"{k} {v}x" for k, v in stats.items()) or "nothing")
+    print("Re-check:   ", "OK - nothing sensitive found" if not again
+          else f"{sum(again.values())} finding(s) left - see the output file")
+    print("\nNote: automatic detection is heuristic. Names without a label that are "
+          "not in terms.txt can slip through - always read the output.")
 
 
 def scan_document(doc, terms, keep_dates=False, keep_images=False, use_ner=True):
@@ -1056,6 +1147,11 @@ def main():
                  "Tip: put file names containing spaces in quotes, "
                  "or drag the file into the terminal.")
     head = src.read_bytes()[:1024]
+    if b"%PDF" not in head and src.suffix.lower() != ".pdf":
+        text = read_text_file(src)
+        if text is not None:
+            anonymize_text_file(src, text, terms, args)
+            return
     if b"%PDF" not in head:
         sys.exit(f"'{src.name}' is not a PDF (file starts with: {head[:8]!r}).\n"
                  "EasyTax files (.tax/.esteuer) are not PDFs - export a PDF from EasyTax "

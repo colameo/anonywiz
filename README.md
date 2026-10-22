@@ -4,6 +4,15 @@ Redacts sensitive data, salary statements and pension fund statements, **locally
 
 The redaction is real: text and image pixels are removed from the PDF, not just covered with black boxes. Afterwards the script automatically re-checks the output and renders a preview image of every page.
 
+Works on **PDFs** (real redaction, with preview) and on **plain text files** (`.txt`, `.md`, `.csv` …):
+
+```bash
+anonywiz tax_return.pdf -t terms.txt     # -> tax_return_anonymized.pdf (+ preview images)
+anonywiz notes.txt -t terms.txt          # -> notes_anonymized.txt (matches become [REDACTED])
+```
+
+Details for text files: [Text files](#text-files).
+
 ```bash
 pipx install git+https://github.com/colameo/anonywiz.git
 ```
@@ -28,6 +37,8 @@ Show the version with `anonywiz --version` (or `-v`).
 | File content | metadata, XMP, embedded files (EasyTax sometimes embeds an XML with all data), form fields |
 
 Figures such as salary, assets or deductions stay visible.
+
+Plain text files (`.txt`, `.md`, `.csv` …) get the same detectors for patterns, addresses, your terms, names and dates; see [Text files](#text-files).
 
 ---
 
@@ -121,6 +132,21 @@ Output in the same folder:
 
 Dates are redacted completely by default. To keep the year visible (`31.12.2023` becomes `▮▮▮▮▮▮2023`, also for birth dates) add `--date-mode year`; to keep dates add `--date-mode none` (birth dates after a label stay redacted).
 
+### Text files
+
+Any file that is not a PDF but readable as text (UTF-8 or Windows-1252) is anonymised with the same detectors: patterns, addresses, your terms, automatically detected names and dates (`--date-mode`).
+
+```bash
+anonywiz notes.txt -t terms.txt
+```
+
+- Output: `notes_anonymized.txt` next to the original (or the name given with `-o`).
+- Every match is replaced by `[REDACTED]`. With `--date-mode year`, `31.12.2023` becomes `XX.XX.2023`.
+- The output is checked again and leftover findings are reported.
+- `--check` only counts the findings per category and changes nothing (exit code 2 if anything was found).
+- PDF-only options (`--pages`, `--region`, `--keep-images`, `--no-preview` …) have no effect on text files.
+- Files with a `.pdf` extension are always treated as PDFs.
+
 ### 3. Read the report
 
 The re-check is printed at the end:
@@ -211,6 +237,9 @@ anonywiz file.pdf -t terms.txt --remove-scans
 
 # Redact day and month of dates, keep the year (also for birth dates)
 anonywiz file.pdf -t terms.txt --date-mode year
+
+# Anonymise a text file (writes notes_anonymized.txt)
+anonywiz notes.txt -t terms.txt
 ```
 
 ### All options
@@ -218,7 +247,7 @@ anonywiz file.pdf -t terms.txt --date-mode year
 | Option | Effect |
 |---|---|
 | `-t, --terms FILE` | redact your own terms |
-| `-o, --out FILE` | output file name (default: `<name>_anonymized.pdf`) |
+| `-o, --out FILE` | output file name (default: `<name>_anonymized.pdf`, or `<name>_anonymized.<ext>` for text files) |
 | `--pages 1,3-6` | keep only these pages |
 | `--region S:x0,y0,x1,y1` | redact an area by hand, can be repeated |
 | `--date-mode full\|year\|none` | `full` redacts whole dates (default), `year` redacts day and month but keeps the year, `none` keeps dates. In `full` and `none` mode birth dates (after a label such as `geb.`, `Geburtsdatum`, `born`, `date of birth`, `né le`, `date de naissance`, `nato il`, `data di nascita`) are always redacted completely; `year` applies to them too |
@@ -266,6 +295,7 @@ anonywiz file.pdf -t terms.txt --date-mode year
 - Automatically detected names are redacted as whole words everywhere, so a wrong detection can black out a common word (see `--no-auto-names`).
 - OCR misses handwriting, stamps and poorly scanned areas.
 - The detection vocabulary (label words, street words, birth date labels, stop words) covers German, English, French and Italian. Other languages are covered only by the language-independent patterns (AHV, IBAN, UID, ISIN, e-mail, phone, card numbers, dates).
+- In text files only the detectors apply; there are no images, hidden content or metadata to handle, and the card number check (Luhn) is not used.
 - Dates are only recognised as `dd.mm.yyyy` (1 or 2 digit day and month, year 19xx or 20xx).
 - Redact too much rather than too little. Remove pages you don't need with `--pages`.
 - Safer still: type out only the figures you need instead of sharing a PDF.
@@ -324,6 +354,18 @@ You cannot push to this repository directly. Changes come in through a fork and 
    ```bash
    .venv/bin/pytest
    ```
+   To try your change on a real file before pushing, use the editable install from step 3. `.venv/bin/anonywiz` then runs your working copy, and edits to `anonywiz.py` take effect immediately without reinstalling:
+   ```bash
+   .venv/bin/anonywiz sample.pdf -t terms.txt
+   ```
+   Without installing, `.venv/bin/python anonywiz.py sample.pdf` from the repository folder works as well.
+
+   **Using your working copy as the global `anonywiz` command:** if you installed anonywiz with pipx before, a plain `anonywiz` still runs that installed release, not your changes (the version number is the same, so it is easy to miss; typical sign: new features report "not a PDF" or an unknown option). Replace it once with an editable install:
+   ```bash
+   pipx install --force -e .      # run in the repository folder
+   which -a anonywiz              # should list only ~/.local/bin/anonywiz
+   ```
+   From then on `anonywiz` runs your working copy. To go back to the release: `pipx install --force git+https://github.com/colameo/anonywiz.git`.
 6. **Commit** with a short, imperative one-line message (for example `Fix crash on older PyMuPDF`), then push the branch to your fork:
    ```bash
    git push -u origin fix-short-description

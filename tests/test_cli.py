@@ -394,3 +394,24 @@ def test_date_column_not_mistaken_for_barcode(monkeypatch, tmp_path):
     text = page_text(out)
     assert "24.06." not in text
     assert all(str(1960 + i) in text for i in range(8))
+
+
+# --- text files -------------------------------------------------------------------------
+
+def test_text_file(monkeypatch, tmp_path):
+    f = tmp_path / "brief.txt"
+    f.write_text(f"Ehefrau: Anna Beispiel\nMail {EMAIL}, AHV {AHV}\n"
+                 "Geboren 01.02.1980, Zahlung am 03.04.2021\nBeispiel wohnt in 8001 Zürich\n",
+                 encoding="utf-8")
+    run(monkeypatch, f, "--no-ner")
+    out = (tmp_path / "brief_anonymized.txt").read_text(encoding="utf-8")
+    for secret in (EMAIL, AHV, "Anna", "Beispiel", "01.02.1980", "03.04.2021", "8001 Zürich"):
+        assert secret not in out
+    assert "[REDACTED]" in out
+
+
+def test_text_file_date_mode_year(monkeypatch, tmp_path):
+    f = tmp_path / "a.txt"
+    f.write_text("Am 03.04.2021 bezahlt", encoding="utf-8")
+    run(monkeypatch, f, "--no-ner", "--date-mode", "year")
+    assert (tmp_path / "a_anonymized.txt").read_text(encoding="utf-8") == "Am XX.XX.2021 bezahlt"
